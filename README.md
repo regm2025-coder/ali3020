@@ -1,2 +1,0 @@
-# PhotoRecovery
-استرجاع الصور 
