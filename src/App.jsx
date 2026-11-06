@@ -43,6 +43,11 @@ function App() {
   const [dataError, setDataError] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
+  const [showMeetingForm, setShowMeetingForm] = useState(false);
+  const [meetingTitle, setMeetingTitle] = useState("");
+  const [meetingDescription, setMeetingDescription] = useState("");
+  const [meetingDate, setMeetingDate] = useState("");
+  const [meetingSaving, setMeetingSaving] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
 
   async function restoreMembership(user) {
@@ -203,6 +208,37 @@ function App() {
     setTaskTitle("");
     setShowTaskForm(false);
     setActive("tasks");
+  }
+
+  async function addMeeting(event) {
+    event.preventDefault();
+    if (!meetingTitle.trim() || !meetingDate || !authUser || !membership) return;
+    setMeetingSaving(true);
+    setDataError("");
+    const { data, error } = await supabase
+      .from("meetings")
+      .insert({
+        organization_id: membership.organization_id,
+        title: meetingTitle.trim(),
+        description: meetingDescription.trim() || null,
+        meeting_date: new Date(meetingDate).toISOString(),
+        created_by: authUser.id,
+      })
+      .select("id, title, description, meeting_date, created_at")
+      .single();
+    if (error) {
+      setDataError(error.message);
+    } else {
+      setMeetings((current) => [...current, {
+        ...data,
+        date: formatDate(data.meeting_date),
+      }].sort((a, b) => new Date(a.meeting_date) - new Date(b.meeting_date)));
+      setMeetingTitle("");
+      setMeetingDescription("");
+      setMeetingDate("");
+      setShowMeetingForm(false);
+    }
+    setMeetingSaving(false);
   }
 
   async function toggleTask(id) {
@@ -366,7 +402,7 @@ function App() {
 
         {active === "meetings" && (
           <div className="page-content">
-            <div className="page-heading-row"><div><span className="section-kicker">المواعيد</span><h2>الاجتماعات</h2><p>نظرة على الاجتماعات المجدولة.</p></div><button className="primary-button" onClick={() => alert("سيتم تفعيل إنشاء الاجتماعات في المرحلة التالية.")}><Plus size={18} /> اجتماع جديد</button></div>
+            <div className="page-heading-row"><div><span className="section-kicker">المواعيد</span><h2>الاجتماعات</h2><p>نظرة على الاجتماعات المجدولة.</p></div><button className="primary-button" onClick={() => setShowMeetingForm(true)}><Plus size={18} /> اجتماع جديد</button></div>
             {dataError && <div className="auth-error" role="alert">{dataError}</div>}
             <section className="panel full-panel"><div className="meeting-list">{meetings.map((meeting) => <div className="meeting-row" key={meeting.id}><div className="meeting-date"><CalendarDays size={17} /></div><div className="meeting-info"><strong>{meeting.title}</strong><span><Clock3 size={13} /> {meeting.date}</span></div><span className="status-pill upcoming">مسجل</span></div>)}{!dataLoading && meetings.length === 0 && <p className="data-message">لا توجد اجتماعات مسجلة حتى الآن.</p>}</div></section>
           </div>
@@ -375,6 +411,21 @@ function App() {
         {active === "team" && <PlaceholderPage title="الفريق" description="ستتمكن هنا من إدارة أعضاء الفريق وصلاحياتهم بعد ربط قاعدة البيانات." icon={Users} />}
         {active === "settings" && <PlaceholderPage title="الإعدادات" description="إعدادات الحساب والتنبيهات ستتوفر في مرحلة لاحقة." icon={Settings} />}
       </main>
+
+      {showMeetingForm && (
+        <div className="modal-backdrop" onClick={() => setShowMeetingForm(false)}>
+          <form className="task-modal" onSubmit={addMeeting} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-heading"><div><span className="section-kicker">اجتماع جديد</span><h3>جدولة اجتماع</h3></div><button type="button" className="icon-button" onClick={() => setShowMeetingForm(false)} aria-label="إغلاق"><X size={19} /></button></div>
+            <label htmlFor="meeting-title">عنوان الاجتماع</label>
+            <input id="meeting-title" autoFocus value={meetingTitle} onChange={(event) => setMeetingTitle(event.target.value)} placeholder="اكتب عنوان الاجتماع..." required />
+            <label htmlFor="meeting-description">الوصف (اختياري)</label>
+            <textarea id="meeting-description" value={meetingDescription} onChange={(event) => setMeetingDescription(event.target.value)} placeholder="تفاصيل الاجتماع..." rows="3" />
+            <label htmlFor="meeting-date">موعد الاجتماع</label>
+            <input id="meeting-date" type="datetime-local" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} required />
+            <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowMeetingForm(false)}>إلغاء</button><button className="primary-button" type="submit" disabled={meetingSaving}><Plus size={17} /> {meetingSaving ? "جارٍ الحفظ..." : "حفظ الاجتماع"}</button></div>
+          </form>
+        </div>
+      )}
 
       {showTaskForm && (
         <div className="modal-backdrop" onClick={() => setShowTaskForm(false)}>
