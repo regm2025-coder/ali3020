@@ -38,6 +38,11 @@ function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerLoading, setRegisterLoading] = useState(false);
+  const [registerMessage, setRegisterMessage] = useState("");
   const [active, setActive] = useState("home");
   const [tasks, setTasks] = useState([]);
   const [meetings, setMeetings] = useState([]);
@@ -191,6 +196,30 @@ function App() {
     }
   }
 
+  async function handleRegister(event) {
+    event.preventDefault();
+    setRegisterMessage("");
+    if (!supabase) {
+      setRegisterMessage("الاتصال بقاعدة البيانات غير مضبوط.");
+      return;
+    }
+    setRegisterLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("register-member", {
+        body: { username: registerUsername.trim().toLowerCase(), password: registerPassword },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setRegisterMessage(data?.message || "تم إرسال طلب العضوية. انتظر موافقة المدير قبل تسجيل الدخول.");
+      setRegisterUsername("");
+      setRegisterPassword("");
+    } catch (error) {
+      setRegisterMessage(error?.message || "تعذر إرسال الطلب. حاول مرة أخرى.");
+    } finally {
+      setRegisterLoading(false);
+    }
+  }
+
   async function handleLogout() {
     if (supabase) await supabase.auth.signOut();
     setAuthUser(null);
@@ -287,19 +316,36 @@ function App() {
   if (!authUser) {
     return (
       <main className="auth-screen">
-        <form className="auth-card" onSubmit={handleLogin}>
-          <div className="auth-logo">م</div>
-          <span className="eyebrow">مجلس الشورى</span>
-          <h1>تسجيل الدخول إلى مِيعاد</h1>
-          <p className="auth-description">أدخل اسم المستخدم وكلمة المرور للمتابعة.</p>
-          <label htmlFor="login-username">اسم المستخدم</label>
-          <input id="login-username" autoComplete="username" value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} placeholder="اسم المستخدم" required />
-          <label htmlFor="login-password">كلمة المرور</label>
-          <input id="login-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder="كلمة المرور" required />
-          {loginError && <div className="auth-error" role="alert">{loginError}</div>}
-          <button className="primary-button auth-submit" type="submit" disabled={loginLoading}>{loginLoading ? "جارٍ تسجيل الدخول..." : "دخول"}</button>
-          <span className="auth-footnote">الدخول متاح للحسابات المعتمدة من الإدارة.</span>
-        </form>
+        {!showRegister ? (
+          <form className="auth-card" onSubmit={handleLogin}>
+            <div className="auth-logo">م</div>
+            <span className="eyebrow">مجلس الشورى</span>
+            <h1>تسجيل الدخول إلى مِيعاد</h1>
+            <p className="auth-description">أدخل اسم المستخدم وكلمة المرور للمتابعة.</p>
+            <label htmlFor="login-username">اسم المستخدم</label>
+            <input id="login-username" autoComplete="username" value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} placeholder="اسم المستخدم" required />
+            <label htmlFor="login-password">كلمة المرور</label>
+            <input id="login-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder="كلمة المرور" required />
+            {loginError && <div className="auth-error" role="alert">{loginError}</div>}
+            <button className="primary-button auth-submit" type="submit" disabled={loginLoading}>{loginLoading ? "جارٍ تسجيل الدخول..." : "دخول"}</button>
+            <span className="auth-footnote">الدخول متاح للحسابات المعتمدة من الإدارة.</span>
+            <button type="button" className="text-link auth-register-link" onClick={() => { setShowRegister(true); setLoginError(""); setRegisterMessage(""); }}>تسجيل عضو جديد</button>
+          </form>
+        ) : (
+          <form className="auth-card" onSubmit={handleRegister}>
+            <div className="auth-logo">م</div>
+            <span className="eyebrow">مجلس الشورى</span>
+            <h1>طلب عضوية جديدة</h1>
+            <p className="auth-description">أنشئ طلب انضمام. لن تتمكن من الدخول إلا بعد موافقة المدير.</p>
+            <label htmlFor="register-username">اسم المستخدم</label>
+            <input id="register-username" autoComplete="username" value={registerUsername} onChange={(event) => setRegisterUsername(event.target.value)} placeholder="3 إلى 32 حرفًا إنجليزيًا أو رقمًا" minLength={3} maxLength={32} pattern="[A-Za-z0-9._-]+" required />
+            <label htmlFor="register-password">كلمة المرور</label>
+            <input id="register-password" type="password" autoComplete="new-password" value={registerPassword} onChange={(event) => setRegisterPassword(event.target.value)} placeholder="8 أحرف على الأقل" minLength={8} maxLength={128} required />
+            {registerMessage && <div className="auth-error" role="status">{registerMessage}</div>}
+            <button className="primary-button auth-submit" type="submit" disabled={registerLoading}>{registerLoading ? "جارٍ إرسال الطلب..." : "إرسال طلب العضوية"}</button>
+            <button type="button" className="text-link auth-register-link" onClick={() => { setShowRegister(false); setRegisterMessage(""); }}>العودة إلى تسجيل الدخول</button>
+          </form>
+        )}
       </main>
     );
   }
