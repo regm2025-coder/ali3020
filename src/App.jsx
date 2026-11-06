@@ -43,6 +43,9 @@ function App() {
   const [dataError, setDataError] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [taskAssignedTo, setTaskAssignedTo] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [meetingDescription, setMeetingDescription] = useState("");
@@ -88,10 +91,10 @@ function App() {
     if (!supabase || !activeMembership?.organization_id) return;
     setDataLoading(true);
     setDataError("");
-    const [taskResult, meetingResult] = await Promise.all([
+    const [taskResult, meetingResult, memberResult] = await Promise.all([
       supabase
         .from("assignments")
-        .select("id, title, description, due_date, status, created_at")
+        .select("id, title, description, assigned_to, due_date, status, created_at")
         .eq("organization_id", activeMembership.organization_id)
         .order("created_at", { ascending: false }),
       supabase
@@ -99,7 +102,21 @@ function App() {
         .select("id, title, description, meeting_date, created_at")
         .eq("organization_id", activeMembership.organization_id)
         .order("meeting_date", { ascending: true }),
+      supabase
+        .from("memberships")
+        .select("user_id, username, role")
+        .eq("organization_id", activeMembership.organization_id)
+        .eq("status", "approved"),
     ]);
+    if (memberResult.error) {
+      setDataError(memberResult.error.message);
+    } else {
+      const approvedMembers = memberResult.data || [];
+      setTeamMembers(approvedMembers);
+      setTaskAssignedTo((current) => current && approvedMembers.some((member) => member.user_id === current)
+        ? current
+        : (approvedMembers.find((member) => member.role === "employee")?.user_id || activeMembership.user_id));
+    }
     if (taskResult.error || meetingResult.error) {
       setDataError(taskResult.error?.message || meetingResult.error?.message || "تعذر تحميل بيانات المؤسسة.");
     } else {
@@ -184,20 +201,23 @@ function App() {
 
   async function addTask(event) {
     event.preventDefault();
-    if (!taskTitle.trim() || !authUser || !membership) return;
+    if (!taskTitle.trim() || !taskAssignedTo || !authUser || !membership) return;
+    setTaskSaving(true);
     setDataError("");
     const { data, error } = await supabase
       .from("assignments")
       .insert({
         organization_id: membership.organization_id,
         title: taskTitle.trim(),
+        assigned_to: taskAssignedTo,
         created_by: authUser.id,
         status: "جديدة",
       })
-      .select("id, title, description, due_date, status, created_at")
+      .select("id, title, description, assigned_to, due_date, status, created_at")
       .single();
     if (error) {
       setDataError(error.message);
+      setTaskSaving(false);
       return;
     }
     setTasks((current) => [{
@@ -207,6 +227,7 @@ function App() {
     }, ...current]);
     setTaskTitle("");
     setShowTaskForm(false);
+    setTaskSaving(false);
     setActive("tasks");
   }
 
@@ -432,8 +453,13 @@ function App() {
           <form className="task-modal" onSubmit={addTask} onClick={(event) => event.stopPropagation()}>
             <div className="modal-heading"><div><span className="section-kicker">مهمة جديدة</span><h3>أضف مهمة إلى قائمتك</h3></div><button type="button" className="icon-button" onClick={() => setShowTaskForm(false)} aria-label="إغلاق"><X size={19} /></button></div>
             <label htmlFor="task-title">عنوان المهمة</label>
-            <input id="task-title" autoFocus value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="اكتب عنوان المهمة..." />
-            <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowTaskForm(false)}>إلغاء</button><button className="primary-button" type="submit"><Plus size={17} /> إضافة المهمة</button></div>
+            <input id="task-title" autoFocus value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="اكتب عنوان المهمة..." required />
+            <label htmlFor="task-assignee">إسناد المهمة إلى</label>
+            <select id="task-assignee" value={taskAssignedTo} onChange={(event) => setTaskAssignedTo(event.target.value)} required>
+              <option value="" disabled>اختر الموظف المسؤول</option>
+              {teamMembers.map((member) => <option key={member.user_id} value={member.user_id}>{member.username}{member.role === "manager" ? " (المدير)" : ""}</option>)}
+            </select>
+            <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowTaskForm(false)}>إلغاء</button><button className="primary-button" type="submit" disabled={taskSaving || !taskAssignedTo}><Plus size={17} /> {taskSaving ? "جارٍ الحفظ..." : "إضافة المهمة"}</button></div>
           </form>
         </div>
       )}
