@@ -105,6 +105,8 @@ button { cursor: pointer; }
 .task-modal label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 7px; }
 .task-modal input { width: 100%; border: 1px solid #e8e5dc; border-radius: 9px; outline: none; padding: 11px 12px; font-size: 12px; }
 .task-modal input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px #bd922f18; }
+.task-modal select, .task-modal textarea { width: 100%; border: 1px solid #e8e5dc; border-radius: 9px; outline: none; padding: 11px 12px; font: inherit; font-size: 12px; background: #fff; color: var(--ink); margin-bottom: 14px; }
+.task-modal select:focus, .task-modal textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px #bd922f18; }
 .modal-actions { display: flex; justify-content: flex-start; gap: 8px; margin-top: 20px; }
 .menu-trigger, .close-menu, .sidebar-scrim { display: none; }
 @media (max-width: 1100px) {
