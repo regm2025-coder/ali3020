@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 
+const taskStatusLabel = (status) => ({ new: "جديدة", in_progress: "قيد التنفيذ", completed: "مكتملة" }[status] || "جديدة");
+
 const formatDate = (value) => {
   if (!value) return "لم يحدد بعد";
   return new Intl.DateTimeFormat("ar", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -124,7 +126,7 @@ function App() {
         ...task,
         project: "عام",
         due: formatDate(task.due_date),
-        status: task.status || "جديدة",
+        status: task.status || "new",
       })));
       setMeetings((meetingResult.data || []).map((meeting) => ({
         ...meeting,
@@ -196,7 +198,7 @@ function App() {
     setActive("home");
   }
 
-  const completed = tasks.filter((task) => task.status === "مكتملة").length;
+  const completed = tasks.filter((task) => task.status === "completed").length;
   const pending = tasks.length - completed;
 
   async function addTask(event) {
@@ -211,7 +213,7 @@ function App() {
         title: taskTitle.trim(),
         assigned_to: taskAssignedTo,
         created_by: authUser.id,
-        status: "جديدة",
+        status: "new",
       })
       .select("id, title, description, assigned_to, due_date, status, created_at")
       .single();
@@ -265,7 +267,7 @@ function App() {
   async function toggleTask(id) {
     const task = tasks.find((item) => item.id === id);
     if (!task) return;
-    const nextStatus = task.status === "مكتملة" ? "قيد التنفيذ" : "مكتملة";
+    const nextStatus = task.status === "completed" ? "in_progress" : "completed";
     const { error } = await supabase
       .from("assignments")
       .update({ status: nextStatus })
@@ -472,11 +474,11 @@ function StatCard({ icon: Icon, label, value, note }) {
 }
 
 function TaskRow({ task, onToggle }) {
-  const done = task.status === "مكتملة";
+  const done = task.status === "completed";
   return <div className={`task-row ${done ? "task-done" : ""}`}>
     <button className={`task-check ${done ? "checked" : ""}`} onClick={() => onToggle(task.id)} aria-label={done ? "إلغاء إكمال المهمة" : "إكمال المهمة"}>{done && <CheckCircle2 size={17} />}</button>
     <div className="task-main"><strong>{task.title}</strong><span>{task.project} <i /> {task.due}</span></div>
-    <span className={`status-pill ${done ? "completed" : task.status === "قيد التنفيذ" ? "in-progress" : "new"}`}>{task.status}</span>
+    <span className={`status-pill ${done ? "completed" : task.status === "in_progress" ? "in-progress" : "new"}`}>{taskStatusLabel(task.status)}</span>
   </div>;
 }
 
