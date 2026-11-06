@@ -175,18 +175,28 @@ function App() {
     }
     setLoginLoading(true);
     try {
-      // المرحلة الأولى: حساب المدير الأول فقط. تحويل اسم admin إلى بريد Auth الداخلي.
-      // لا يُستخدم هذا التحويل لإنشاء حسابات الموظفين أو تعميمه على بقية المستخدمين.
       const username = loginUsername.trim().toLowerCase();
-      if (username !== "admin") {
-        throw new Error("حاليًا تسجيل الدخول متاح لحساب المدير admin فقط.");
+      if (username === "admin") {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: "admin@miad.invalid",
+          password: loginPassword,
+        });
+        if (error) throw error;
+        await restoreMembership(data.user);
+      } else {
+        const { data, error } = await supabase.functions.invoke("username-auth", {
+          body: { username, password: loginPassword },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        if (!data?.session) throw new Error("تعذر إنشاء جلسة الدخول.");
+        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+        if (sessionError) throw sessionError;
+        await restoreMembership(sessionData.user);
       }
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: "admin@miad.invalid",
-        password: loginPassword,
-      });
-      if (error) throw error;
-      await restoreMembership(data.user);
       setLoginPassword("");
       setActive("home");
     } catch (error) {
