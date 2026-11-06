@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase, isSupabaseConfigured } from "./lib/supabase";
 import {
   Bell,
   CalendarDays,
@@ -34,11 +35,112 @@ const navItems = [
 ];
 
 function App() {
+  const [authUser, setAuthUser] = useState(null);
+  const [membership, setMembership] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [loginUsername, setLoginUsername] = useState("admin");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [active, setActive] = useState("home");
   const [tasks, setTasks] = useState(initialTasks);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
+
+  async function restoreMembership(user) {
+    if (!supabase || !user) {
+      setAuthChecking(false);
+      return;
+    }
+    const { data: member, error } = await supabase
+      .from("memberships")
+      .select("id, user_id, organization_id, username, role, status")
+      .eq("user_id", user.id)
+      .eq("status", "approved")
+      .maybeSingle();
+
+    if (error || !member) {
+      await supabase.auth.signOut();
+      setAuthUser(null);
+      setMembership(null);
+      setLoginError("لم نعثر على عضوية معتمدة لهذا الحساب.");
+      setAuthChecking(false);
+      return;
+    }
+
+    const { data: organization } = await supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", member.organization_id)
+      .maybeSingle();
+
+    setAuthUser(user);
+    setMembership({ ...member, organization_name: organization?.name ?? "مؤسستك" });
+    setAuthChecking(false);
+  }
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthChecking(false);
+      return;
+    }
+    let active = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return;
+      if (session) restoreMembership(session.user);
+      else setAuthChecking(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setAuthUser(null);
+        setMembership(null);
+      }
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    setLoginError("");
+    if (!isSupabaseConfigured || !supabase) {
+      setLoginError("الاتصال بقاعدة البيانات غير مضبوط.");
+      return;
+    }
+    setLoginLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("username-auth", {
+        body: { username: loginUsername.trim(), password: loginPassword },
+      });
+      if (error) throw error;
+      if (!data?.session?.access_token || !data?.session?.refresh_token || !data?.membership) {
+        throw new Error(data?.error || "تعذر تسجيل الدخول.");
+      }
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      if (sessionError) throw sessionError;
+      setAuthUser(data.session.user);
+      setMembership(data.membership);
+      setLoginPassword("");
+      setActive("home");
+    } catch (error) {
+      setLoginError(error?.message || "تعذر تسجيل الدخول. تحقق من البيانات وحاول مجددًا.");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    if (supabase) await supabase.auth.signOut();
+    setAuthUser(null);
+    setMembership(null);
+    setActive("home");
+  }
 
   const completed = tasks.filter((task) => task.status === "مكتملة").length;
   const pending = tasks.length - completed;
@@ -65,6 +167,30 @@ function App() {
     );
   }
 
+  if (authChecking) {
+    return <main className="auth-screen"><section className="auth-card"><div className="auth-logo">م</div><h1>مِيعاد</h1><p>جارٍ التحقق من جلسة الدخول...</p></section></main>;
+  }
+
+  if (!authUser) {
+    return (
+      <main className="auth-screen">
+        <form className="auth-card" onSubmit={handleLogin}>
+          <div className="auth-logo">م</div>
+          <span className="eyebrow">مجلس الشورى</span>
+          <h1>تسجيل الدخول إلى مِيعاد</h1>
+          <p className="auth-description">أدخل اسم المستخدم وكلمة المرور للمتابعة.</p>
+          <label htmlFor="login-username">اسم المستخدم</label>
+          <input id="login-username" autoComplete="username" value={loginUsername} onChange={(event) => setLoginUsername(event.target.value)} placeholder="اسم المستخدم" required />
+          <label htmlFor="login-password">كلمة المرور</label>
+          <input id="login-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder="كلمة المرور" required />
+          {loginError && <div className="auth-error" role="alert">{loginError}</div>}
+          <button className="primary-button auth-submit" type="submit" disabled={loginLoading}>{loginLoading ? "جارٍ تسجيل الدخول..." : "دخول"}</button>
+          <span className="auth-footnote">الدخول متاح للحسابات المعتمدة من الإدارة.</span>
+        </form>
+      </main>
+    );
+  }
+
   const pageTitle = navItems.find((item) => item.id === active)?.label || "الرئيسية";
 
   return (
@@ -74,7 +200,7 @@ function App() {
           <div className="brand-mark">م</div>
           <div>
             <div className="brand-name">مِيعاد</div>
-            <div className="brand-caption">إدارة الاجتماعات والمهام</div>
+            <div className="brand-caption">{membership?.organization_name || "إدارة الاجتماعات والمهام"}</div>
           </div>
           <button className="icon-button close-menu" onClick={() => setMobileMenu(false)} aria-label="إغلاق القائمة"><X size={19} /></button>
         </div>
@@ -92,9 +218,10 @@ function App() {
 
         <div className="sidebar-bottom">
           <button className="nav-item" onClick={() => setActive("settings")}><Settings size={19} /><span>الإعدادات</span></button>
+          <button className="nav-item" onClick={handleLogout}><X size={19} /><span>تسجيل الخروج</span></button>
           <div className="profile-card">
             <div className="avatar">م</div>
-            <div className="profile-info"><strong>مدير النظام</strong><span>حساب تجريبي</span></div>
+            <div className="profile-info"><strong>{membership?.username || "المستخدم"}</strong><span>{membership?.role === "manager" ? "مدير معتمد" : "موظف معتمد"}</span></div>
             <span className="profile-dot" />
           </div>
         </div>
