@@ -16,16 +16,10 @@ import {
   X,
 } from "lucide-react";
 
-const initialTasks = [
-  { id: 1, title: "إعداد ملخص الاجتماع الأسبوعي", project: "الإدارة", due: "اليوم، ٢:٠٠ م", status: "قيد التنفيذ" },
-  { id: 2, title: "مراجعة خطة العمل للفريق", project: "فريق العمل", due: "غدًا، ١٠:٠٠ ص", status: "جديدة" },
-  { id: 3, title: "إرسال تقرير الإنجاز", project: "التقارير", due: "الأحد، ١٢:٠٠ م", status: "مكتملة" },
-];
-
-const meetings = [
-  { id: 1, title: "الاجتماع الأسبوعي", date: "اليوم", time: "١٠:٠٠ صباحًا", people: "٦ مشاركين" },
-  { id: 2, title: "مراجعة خطة المشاريع", date: "غدًا", time: "١١:٣٠ صباحًا", people: "٤ مشاركين" },
-];
+const formatDate = (value) => {
+  if (!value) return "لم يحدد بعد";
+  return new Intl.DateTimeFormat("ar", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+};
 
 const navItems = [
   { id: "home", label: "الرئيسية", icon: LayoutDashboard },
@@ -43,7 +37,10 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [active, setActive] = useState("home");
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -75,9 +72,46 @@ function App() {
       .eq("id", member.organization_id)
       .maybeSingle();
 
+    const activeMembership = { ...member, organization_name: organization?.name ?? "مؤسستك" };
     setAuthUser(user);
-    setMembership({ ...member, organization_name: organization?.name ?? "مؤسستك" });
+    setMembership(activeMembership);
     setAuthChecking(false);
+    await loadWorkspaceData(activeMembership);
+  }
+
+  async function loadWorkspaceData(activeMembership = membership) {
+    if (!supabase || !activeMembership?.organization_id) return;
+    setDataLoading(true);
+    setDataError("");
+    const [taskResult, meetingResult] = await Promise.all([
+      supabase
+        .from("assignments")
+        .select("id, title, description, due_date, status, created_at")
+        .eq("organization_id", activeMembership.organization_id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("meetings")
+        .select("id, title, description, meeting_date, created_at")
+        .eq("organization_id", activeMembership.organization_id)
+        .order("meeting_date", { ascending: true }),
+    ]);
+    if (taskResult.error || meetingResult.error) {
+      setDataError(taskResult.error?.message || meetingResult.error?.message || "تعذر تحميل بيانات المؤسسة.");
+    } else {
+      setTasks((taskResult.data || []).map((task) => ({
+        ...task,
+        project: "عام",
+        due: formatDate(task.due_date),
+        status: task.status || "جديدة",
+      })));
+      setMeetings((meetingResult.data || []).map((meeting) => ({
+        ...meeting,
+        date: formatDate(meeting.meeting_date),
+        time: "",
+        people: "",
+      })));
+    }
+    setDataLoading(false);
   }
 
   useEffect(() => {
@@ -143,26 +177,48 @@ function App() {
   const completed = tasks.filter((task) => task.status === "مكتملة").length;
   const pending = tasks.length - completed;
 
-  function addTask(event) {
+  async function addTask(event) {
     event.preventDefault();
-    if (!taskTitle.trim()) return;
-    setTasks((current) => [
-      { id: Date.now(), title: taskTitle.trim(), project: "عام", due: "لم يحدد بعد", status: "جديدة" },
-      ...current,
-    ]);
+    if (!taskTitle.trim() || !authUser || !membership) return;
+    setDataError("");
+    const { data, error } = await supabase
+      .from("assignments")
+      .insert({
+        organization_id: membership.organization_id,
+        title: taskTitle.trim(),
+        created_by: authUser.id,
+        status: "جديدة",
+      })
+      .select("id, title, description, due_date, status, created_at")
+      .single();
+    if (error) {
+      setDataError(error.message);
+      return;
+    }
+    setTasks((current) => [{
+      ...data,
+      project: "عام",
+      due: formatDate(data.due_date),
+    }, ...current]);
     setTaskTitle("");
     setShowTaskForm(false);
     setActive("tasks");
   }
 
-  function toggleTask(id) {
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === id
-          ? { ...task, status: task.status === "مكتملة" ? "قيد التنفيذ" : "مكتملة" }
-          : task
-      )
-    );
+  async function toggleTask(id) {
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+    const nextStatus = task.status === "مكتملة" ? "قيد التنفيذ" : "مكتملة";
+    const { error } = await supabase
+      .from("assignments")
+      .update({ status: nextStatus })
+      .eq("id", id)
+      .eq("organization_id", membership.organization_id);
+    if (error) {
+      setDataError(error.message);
+      return;
+    }
+    setTasks((current) => current.map((item) => item.id === id ? { ...item, status: nextStatus } : item));
   }
 
   if (authChecking) {
@@ -254,8 +310,10 @@ function App() {
               <div className="banner-decoration"><CalendarDays size={76} strokeWidth={1} /></div>
             </section>
 
+            {dataError && <div className="auth-error" role="alert">{dataError}</div>}
+            {dataLoading && <p className="data-message">جارٍ تحميل بيانات المؤسسة...</p>}
             <section className="stats-grid">
-              <StatCard icon={CalendarDays} label="اجتماعات هذا الأسبوع" value="٤" note="موعدان قادمان" />
+              <StatCard icon={CalendarDays} label="الاجتماعات المسجلة" value={String(meetings.length)} note="من قاعدة البيانات" />
               <StatCard icon={ClipboardList} label="إجمالي المهام" value={String(tasks.length)} note="كل المهام المسجلة" />
               <StatCard icon={Clock3} label="مهام قيد الإنجاز" value={String(pending)} note="تحتاج إلى متابعة" />
               <StatCard icon={CheckCircle2} label="مهام مكتملة" value={String(completed)} note="أحسنت، استمر!" />
@@ -269,6 +327,7 @@ function App() {
                 </div>
                 <div className="task-list">
                   {tasks.slice(0, 4).map((task) => <TaskRow key={task.id} task={task} onToggle={toggleTask} />)}
+                  {!dataLoading && tasks.length === 0 && <p className="data-message">لا توجد مهام مسجلة حتى الآن.</p>}
                 </div>
               </section>
 
@@ -278,10 +337,10 @@ function App() {
                   <button className="text-link" onClick={() => setActive("meetings")}>عرض الكل <ChevronLeft size={15} /></button>
                 </div>
                 <div className="meeting-list">
-                  {meetings.map((meeting) => (
+                  {meetings.slice(0, 4).map((meeting) => (
                     <div className="meeting-row" key={meeting.id}>
-                      <div className="meeting-date"><strong>{meeting.date === "اليوم" ? "٠٦" : "٠٧"}</strong><span>نوفمبر</span></div>
-                      <div className="meeting-info"><strong>{meeting.title}</strong><span><Clock3 size={13} /> {meeting.time} · {meeting.people}</span></div>
+                      <div className="meeting-date"><CalendarDays size={17} /></div>
+                      <div className="meeting-info"><strong>{meeting.title}</strong><span><Clock3 size={13} /> {meeting.date}</span></div>
                       <ChevronLeft className="meeting-arrow" size={17} />
                     </div>
                   ))}
@@ -300,14 +359,16 @@ function App() {
         {active === "tasks" && (
           <div className="page-content">
             <div className="page-heading-row"><div><span className="section-kicker">تنظيم العمل</span><h2>كل المهام</h2><p>تابع المهام وحدّث حالة إنجازها.</p></div><button className="primary-button" onClick={() => setShowTaskForm(true)}><Plus size={18} /> إضافة مهمة</button></div>
-            <section className="panel full-panel"><div className="task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} onToggle={toggleTask} />)}</div></section>
+            {dataError && <div className="auth-error" role="alert">{dataError}</div>}
+            <section className="panel full-panel"><div className="task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} onToggle={toggleTask} />)}{!dataLoading && tasks.length === 0 && <p className="data-message">لا توجد مهام مسجلة حتى الآن.</p>}</div></section>
           </div>
         )}
 
         {active === "meetings" && (
           <div className="page-content">
             <div className="page-heading-row"><div><span className="section-kicker">المواعيد</span><h2>الاجتماعات</h2><p>نظرة على الاجتماعات المجدولة.</p></div><button className="primary-button" onClick={() => alert("سيتم تفعيل إنشاء الاجتماعات في المرحلة التالية.")}><Plus size={18} /> اجتماع جديد</button></div>
-            <section className="panel full-panel"><div className="meeting-list">{meetings.map((meeting) => <div className="meeting-row" key={meeting.id}><div className="meeting-date"><strong>{meeting.date === "اليوم" ? "٠٦" : "٠٧"}</strong><span>نوفمبر</span></div><div className="meeting-info"><strong>{meeting.title}</strong><span><Clock3 size={13} /> {meeting.time} · {meeting.people}</span></div><span className="status-pill upcoming">قادم</span></div>)}</div></section>
+            {dataError && <div className="auth-error" role="alert">{dataError}</div>}
+            <section className="panel full-panel"><div className="meeting-list">{meetings.map((meeting) => <div className="meeting-row" key={meeting.id}><div className="meeting-date"><CalendarDays size={17} /></div><div className="meeting-info"><strong>{meeting.title}</strong><span><Clock3 size={13} /> {meeting.date}</span></div><span className="status-pill upcoming">مسجل</span></div>)}{!dataLoading && meetings.length === 0 && <p className="data-message">لا توجد اجتماعات مسجلة حتى الآن.</p>}</div></section>
           </div>
         )}
 
