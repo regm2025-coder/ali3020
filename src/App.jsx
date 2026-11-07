@@ -13,7 +13,6 @@ import {
   Search,
   Settings,
   Users,
-  UserCheck,
   X,
 } from "lucide-react";
 
