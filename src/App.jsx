@@ -13,6 +13,7 @@ import {
   Search,
   Settings,
   Users,
+  UserCheck,
   X,
 } from "lucide-react";
 
@@ -51,6 +52,9 @@ function App() {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [teamMembers, setTeamMembers] = useState([]);
+  const [pendingMembers, setPendingMembers] = useState([]);
+  const [pendingAction, setPendingAction] = useState("");
+  const [pendingMessage, setPendingMessage] = useState("");
   const [taskAssignedTo, setTaskAssignedTo] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
@@ -98,7 +102,7 @@ function App() {
     if (!supabase || !activeMembership?.organization_id) return;
     setDataLoading(true);
     setDataError("");
-    const [taskResult, meetingResult, memberResult] = await Promise.all([
+    const [taskResult, meetingResult, memberResult, pendingResult] = await Promise.all([
       supabase
         .from("assignments")
         .select("id, title, description, assigned_to, due_date, status, created_at")
@@ -114,12 +118,19 @@ function App() {
         .select("user_id, username, role")
         .eq("organization_id", activeMembership.organization_id)
         .eq("status", "approved"),
+      activeMembership.role === "manager"
+        ? supabase.from("memberships").select("user_id, username, created_at").eq("organization_id", activeMembership.organization_id).eq("status", "pending").order("created_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
     ]);
     if (memberResult.error) {
       setDataError(memberResult.error.message);
     } else {
       const approvedMembers = memberResult.data || [];
       setTeamMembers(approvedMembers);
+      if (activeMembership.role === "manager") {
+        if (pendingResult.error) setDataError(pendingResult.error.message);
+        else setPendingMembers(pendingResult.data || []);
+      }
       setTaskAssignedTo((current) => current && approvedMembers.some((member) => member.user_id === current)
         ? current
         : (approvedMembers.find((member) => member.role === "employee")?.user_id || activeMembership.user_id));
@@ -227,6 +238,25 @@ function App() {
       setRegisterMessage(error?.message || "تعذر إرسال الطلب. حاول مرة أخرى.");
     } finally {
       setRegisterLoading(false);
+    }
+  }
+
+  async function updateMemberApproval(userId, status) {
+    setPendingAction(userId);
+    setPendingMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-membership", {
+        body: { user_id: userId, status },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setPendingMembers((current) => current.filter((member) => member.user_id !== userId));
+      if (status === "approved") await loadWorkspaceData(membership);
+      setPendingMessage(status === "approved" ? "تمت الموافقة على العضو بنجاح." : "تم رفض طلب العضوية.");
+    } catch (error) {
+      setPendingMessage(error?.message || "تعذر تحديث طلب العضوية.");
+    } finally {
+      setPendingAction("");
     }
   }
 
@@ -376,7 +406,7 @@ function App() {
 
         <div className="workspace-label">القائمة الرئيسية</div>
         <nav className="nav-list">
-          {navItems.map(({ id, label, icon: Icon }) => (
+          {navItems.filter((item) => item.id !== "team" || membership?.role === "manager").map(({ id, label, icon: Icon }) => (
             <button key={id} className={`nav-item ${active === id ? "active" : ""}`} onClick={() => { setActive(id); setMobileMenu(false); }}>
               <Icon size={19} strokeWidth={1.8} />
               <span>{label}</span>
@@ -487,7 +517,24 @@ function App() {
           </div>
         )}
 
-        {active === "team" && <PlaceholderPage title="الفريق" description="ستتمكن هنا من إدارة أعضاء الفريق وصلاحياتهم بعد ربط قاعدة البيانات." icon={Users} />}
+        {active === "team" && membership?.role === "manager" && (
+          <div className="page-content">
+            <div className="page-heading-row"><div><span className="section-kicker">إدارة الأعضاء</span><h2>طلبات العضوية</h2><p>راجع طلبات الانضمام ووافق على الموظفين أو ارفض الطلب.</p></div><span className="status-pill upcoming">{pendingMembers.length} طلبات معلّقة</span></div>
+            {pendingMessage && <div className={pendingMessage.startsWith("تعذر") ? "auth-error" : "meeting-note"} role="status">{pendingMessage}</div>}
+            <section className="panel full-panel">
+              <div className="panel-heading"><div><span className="section-kicker">بانتظار المراجعة</span><h3>طلبات الموظفين</h3></div><button className="text-link" onClick={() => loadWorkspaceData(membership)}>تحديث القائمة</button></div>
+              {pendingMembers.map((member) => (
+                <div className="meeting-row" key={member.user_id}>
+                  <div className="meeting-date"><Users size={18} /></div>
+                  <div className="meeting-info"><strong>{member.username}</strong><span>طلب انضمام جديد</span></div>
+                  <button className="primary-button" disabled={!!pendingAction} onClick={() => updateMemberApproval(member.user_id, "approved")}>{pendingAction === member.user_id ? "جارٍ..." : "موافقة"}</button>
+                  <button className="secondary-button" disabled={!!pendingAction} onClick={() => updateMemberApproval(member.user_id, "rejected")}>رفض</button>
+                </div>
+              ))}
+              {!dataLoading && pendingMembers.length === 0 && <p className="data-message">لا توجد طلبات عضوية معلّقة حاليًا.</p>}
+            </section>
+          </div>
+        )}
         {active === "settings" && <PlaceholderPage title="الإعدادات" description="إعدادات الحساب والتنبيهات ستتوفر في مرحلة لاحقة." icon={Settings} />}
       </main>
 
