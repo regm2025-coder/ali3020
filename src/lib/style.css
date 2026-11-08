@@ -1,0 +1,393 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Tahoma", sans-serif;
+  background: #f4f6f8;
+  direction: rtl;
+}
+
+.centered-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 1rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.auth-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.auth-card {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  text-align: center;
+}
+
+.auth-card h1 {
+  margin-bottom: 0.2rem;
+  color: #2b6cb0;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #ddd;
+}
+
+.tabs.secondary {
+  margin-bottom: 1.5rem;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.6rem;
+  border: none;
+  background: #f0f0f0;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.tab.active {
+  background: #2b6cb0;
+  color: white;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.auth-form input {
+  padding: 0.7rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.auth-form button {
+  padding: 0.7rem;
+  border: none;
+  background: #2b6cb0;
+  color: white;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.auth-form button:disabled {
+  background: #a0b8d0;
+}
+
+.error-text {
+  color: #c53030;
+  font-size: 0.9rem;
+}
+
+.info-text {
+  color: #2f855a;
+  font-size: 0.9rem;
+}
+
+.dashboard {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.dashboard-header button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #e53e3e;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.panel {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+
+.members-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.members-table th, .members-table td {
+  padding: 0.6rem;
+  border-bottom: 1px solid #eee;
+  text-align: center;
+}
+
+.approve-btn, .reject-btn {
+  padding: 0.4rem 0.8rem;
+  margin: 0 0.2rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: white;
+}
+
+.approve-btn {
+  background: #38a169;
+}
+
+.reject-btn {
+  background: #e53e3e;
+}
+
+.assignments-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.assignment-item {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.badge {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  background: #edf2f7;
+}
+
+/* ===== التبويبات الرئيسية ===== */
+.main-tabs {
+  background: white;
+}
+
+.count-dot {
+  display: inline-block;
+  margin-right: 0.4rem;
+  min-width: 1.2rem;
+  padding: 0 0.35rem;
+  border-radius: 10px;
+  background: #e53e3e;
+  color: white;
+  font-size: 0.75rem;
+}
+
+/* ===== المهام والاجتماعات ===== */
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.primary-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #2b6cb0;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.primary-btn:disabled {
+  background: #a0b8d0;
+}
+
+.item-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.item-form input,
+.item-form select,
+.item-form textarea,
+.item-actions select {
+  padding: 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: inherit;
+  width: 100%;
+}
+
+.item-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.item-form .check-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.item-form .check-row input {
+  width: auto;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+
+@media (max-width: 520px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.chip {
+  padding: 0.3rem 0.8rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 16px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.chip.active {
+  background: #2b6cb0;
+  border-color: #2b6cb0;
+  color: white;
+}
+
+.item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.85rem;
+  color: #4a5568;
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.item-actions select {
+  width: auto;
+  padding: 0.4rem 0.6rem;
+}
+
+.badge-new {
+  background: #ebf8ff;
+  color: #2b6cb0;
+}
+
+.badge-in_progress {
+  background: #fefcbf;
+  color: #975a16;
+}
+
+.badge-completed {
+  background: #c6f6d5;
+  color: #276749;
+}
+
+.overdue {
+  color: #c53030;
+  font-weight: bold;
+}
+
+.empty-text {
+  color: #718096;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.list-title {
+  margin: 1.2rem 0 0.5rem;
+  color: #2d3748;
+  font-size: 1rem;
+}
+
+.notify-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.notify-text {
+  font-size: 0.9rem;
+  color: #4a5568;
+}
+
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2b6cb0;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
