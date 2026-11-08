@@ -8,6 +8,17 @@ import { disablePush } from "./lib/push";
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 const ADMIN_EMAIL = "admin@miad.invalid";
 
+// supabase-js يرمي رسالة عامة عند أي رد غير 2xx؛ نقرأ رسالة الخادم الفعلية بدلاً منها
+async function functionErrorMessage(error, fallback) {
+  try {
+    const body = await error?.context?.json?.();
+    if (body?.error) return body.error;
+  } catch {
+    // نتجاهل ونعرض الرسالة الاحتياطية
+  }
+  return fallback;
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
@@ -108,7 +119,11 @@ export default function App() {
           "username-auth",
           { body: { username, password } }
         );
-        if (error) throw error;
+        if (error) {
+          throw new Error(
+            await functionErrorMessage(error, "تعذر تسجيل الدخول")
+          );
+        }
         if (data?.error) throw new Error(data.error);
 
         await supabase.auth.setSession({
@@ -135,7 +150,11 @@ export default function App() {
         "register-member",
         { body: { username, password } }
       );
-      if (error) throw error;
+      if (error) {
+        throw new Error(
+          await functionErrorMessage(error, "تعذر إتمام التسجيل")
+        );
+      }
       if (data?.error) throw new Error(data.error);
 
       setAuthView("login");
@@ -172,7 +191,11 @@ export default function App() {
         "manage-membership",
         { body: { user_id: userId, status } }
       );
-      if (error) throw error;
+      if (error) {
+        throw new Error(
+          await functionErrorMessage(error, "تعذر تحديث طلب العضوية.")
+        );
+      }
       if (data?.error) throw new Error(data.error);
 
       setPendingMembers((current) =>
