@@ -190,6 +190,7 @@ body {
   border-radius: 12px;
   font-size: 0.8rem;
   background: #edf2f7;
+}
 
 /* ===== التبويبات الرئيسية ===== */
 .main-tabs {
@@ -389,6 +390,4 @@ body {
   text-decoration: underline;
   cursor: pointer;
   font-size: 0.9rem;
-}
-  
 }
