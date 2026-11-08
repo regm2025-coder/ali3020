@@ -233,3 +233,221 @@ export default function App() {
               <div className="tabs secondary">
                 <button
                   className={loginMode === "employee" ? "tab active" : "tab"}
+                  onClick={() => setLoginMode("employee")}
+                >
+                  دخول موظف
+                </button>
+                <button
+                  className={loginMode === "admin" ? "tab active" : "tab"}
+                  onClick={() => setLoginMode("admin")}
+                >
+                  دخول مدير
+                </button>
+              </div>
+
+              <form onSubmit={handleLogin} className="auth-form">
+                {loginMode === "employee" && (
+                  <input
+                    type="text"
+                    placeholder="اسم المستخدم"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                )}
+                <input
+                  type="password"
+                  placeholder="كلمة المرور"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                {authError && <p className="error-text">{authError}</p>}
+                <button type="submit" disabled={authLoading}>
+                  {authLoading ? "جاري الدخول..." : "دخول"}
+                </button>
+              </form>
+            </>
+          )}
+
+          {authView === "register" && (
+            <form onSubmit={handleRegister} className="auth-form">
+              <input
+                type="text"
+                placeholder="اختر اسم مستخدم"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                minLength={3}
+              />
+              <input
+                type="password"
+                placeholder="اختر كلمة مرور"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+              {authError && <p className="error-text">{authError}</p>}
+              <button type="submit" disabled={authLoading}>
+                {authLoading ? "جاري التسجيل..." : "تسجيل"}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!membership) {
+    return (
+      <div className="centered-screen">
+        <p>لا يوجد لديك عضوية مرتبطة بالنظام.</p>
+        <button onClick={handleLogout}>تسجيل الخروج</button>
+      </div>
+    );
+  }
+
+  if (membership.status === "pending") {
+    return (
+      <div className="centered-screen">
+        <h2>⏳ حسابك قيد المراجعة</h2>
+        <p>بانتظار موافقة المدير على طلب عضويتك.</p>
+        <button onClick={handleLogout}>تسجيل الخروج</button>
+      </div>
+    );
+  }
+
+  if (membership.status === "rejected") {
+    return (
+      <div className="centered-screen">
+        <h2>❌ تم رفض طلب عضويتك</h2>
+        <p>تواصل مع المدير لمزيد من المعلومات.</p>
+        <button onClick={handleLogout}>تسجيل الخروج</button>
+      </div>
+    );
+  }
+
+  if (membership.role === "manager") {
+    return (
+      <div className="dashboard">
+        <header className="dashboard-header">
+          <h1>مِيعاد — لوحة المدير</h1>
+          <button onClick={handleLogout}>تسجيل الخروج</button>
+        </header>
+
+        <NotificationsButton userId={session.user.id} />
+
+        <nav className="tabs main-tabs">
+          <button
+            className={tab === "tasks" ? "tab active" : "tab"}
+            onClick={() => setTab("tasks")}
+          >
+            المهام
+          </button>
+          <button
+            className={tab === "meetings" ? "tab active" : "tab"}
+            onClick={() => setTab("meetings")}
+          >
+            الاجتماعات
+          </button>
+          <button
+            className={tab === "members" ? "tab active" : "tab"}
+            onClick={() => setTab("members")}
+          >
+            الأعضاء
+            {pendingMembers.length > 0 && (
+              <span className="count-dot">{pendingMembers.length}</span>
+            )}
+          </button>
+        </nav>
+
+        {tab === "tasks" && (
+          <Tasks session={session} orgId={ORG_ID} isManager />
+        )}
+        {tab === "meetings" && (
+          <Meetings session={session} orgId={ORG_ID} isManager />
+        )}
+
+        {tab === "members" && (
+        <section className="panel">
+          <h2>طلبات العضوية المعلقة ({pendingMembers.length})</h2>
+
+          {pendingMessage && <p className="info-text">{pendingMessage}</p>}
+
+          {pendingMembers.length === 0 ? (
+            <p>لا توجد طلبات معلقة حالياً.</p>
+          ) : (
+            <table className="members-table">
+              <thead>
+                <tr>
+                  <th>اسم المستخدم</th>
+                  <th>تاريخ الطلب</th>
+                  <th>الإجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMembers.map((m) => (
+                  <tr key={m.user_id}>
+                    <td>{m.username}</td>
+                    <td>{new Date(m.created_at).toLocaleDateString("ar")}</td>
+                    <td>
+                      <button
+                        className="approve-btn"
+                        disabled={pendingAction === m.user_id}
+                        onClick={() => updateMemberApproval(m.user_id, "approved")}
+                      >
+                        موافقة
+                      </button>
+                      <button
+                        className="reject-btn"
+                        disabled={pendingAction === m.user_id}
+                        onClick={() => updateMemberApproval(m.user_id, "rejected")}
+                      >
+                        رفض
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="dashboard">
+      <header className="dashboard-header">
+        <h1>مِيعاد — مرحباً {membership.username}</h1>
+        <button onClick={handleLogout}>تسجيل الخروج</button>
+      </header>
+
+      <NotificationsButton userId={session.user.id} />
+
+      <nav className="tabs main-tabs">
+        <button
+          className={tab === "tasks" ? "tab active" : "tab"}
+          onClick={() => setTab("tasks")}
+        >
+          مهامي
+        </button>
+        <button
+          className={tab === "meetings" ? "tab active" : "tab"}
+          onClick={() => setTab("meetings")}
+        >
+          الاجتماعات
+        </button>
+      </nav>
+
+      {tab === "tasks" && (
+        <Tasks session={session} orgId={ORG_ID} isManager={false} />
+      )}
+      {tab === "meetings" && (
+        <Meetings session={session} orgId={ORG_ID} isManager={false} />
+      )}
+    </div>
+  );
+}
