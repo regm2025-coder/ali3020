@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import Tasks from "./components/Tasks";
+import Meetings from "./components/Meetings";
+import NotificationsButton from "./components/NotificationsButton";
+import { disablePush } from "./lib/push";
 
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 const ADMIN_EMAIL = "admin@miad.invalid";
@@ -20,7 +24,7 @@ export default function App() {
   const [pendingAction, setPendingAction] = useState("");
   const [pendingMessage, setPendingMessage] = useState("");
 
-  const [myAssignments, setMyAssignments] = useState([]);
+  const [tab, setTab] = useState("tasks");
 
   const restoreMembership = useCallback(async (user) => {
     if (!user) {
@@ -81,25 +85,11 @@ export default function App() {
     if (!error) setPendingMembers(data || []);
   }, []);
 
-  const loadMyAssignments = useCallback(async () => {
-    if (!session?.user) return;
-    const { data, error } = await supabase
-      .from("assignments")
-      .select("id, title, description, status, due_date")
-      .eq("assigned_to", session.user.id)
-      .order("created_at", { ascending: false });
-
-    if (!error) setMyAssignments(data || []);
-  }, [session]);
-
   useEffect(() => {
     if (membership?.status === "approved" && membership.role === "manager") {
       loadPendingMembers();
     }
-    if (membership?.status === "approved" && membership.role === "employee") {
-      loadMyAssignments();
-    }
-  }, [membership, loadPendingMembers, loadMyAssignments]);
+  }, [membership, loadPendingMembers]);
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -160,11 +150,17 @@ export default function App() {
   }
 
   async function handleLogout() {
+    // نزيل اشتراك هذا الجهاز قبل الخروج حتى لا تصل إشعارات المستخدم لمن يستخدم الجهاز بعده
+    try {
+      await disablePush();
+    } catch {
+      // لا نمنع تسجيل الخروج بسبب فشل إلغاء الاشتراك
+    }
     await supabase.auth.signOut();
     setSession(null);
     setMembership(null);
     setPendingMembers([]);
-    setMyAssignments([]);
+    setTab("tasks");
   }
 
   async function updateMemberApproval(userId, status) {
@@ -237,179 +233,3 @@ export default function App() {
               <div className="tabs secondary">
                 <button
                   className={loginMode === "employee" ? "tab active" : "tab"}
-                  onClick={() => setLoginMode("employee")}
-                >
-                  دخول موظف
-                </button>
-                <button
-                  className={loginMode === "admin" ? "tab active" : "tab"}
-                  onClick={() => setLoginMode("admin")}
-                >
-                  دخول مدير
-                </button>
-              </div>
-
-              <form onSubmit={handleLogin} className="auth-form">
-                {loginMode === "employee" && (
-                  <input
-                    type="text"
-                    placeholder="اسم المستخدم"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                )}
-                <input
-                  type="password"
-                  placeholder="كلمة المرور"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                {authError && <p className="error-text">{authError}</p>}
-                <button type="submit" disabled={authLoading}>
-                  {authLoading ? "جاري الدخول..." : "دخول"}
-                </button>
-              </form>
-            </>
-          )}
-
-          {authView === "register" && (
-            <form onSubmit={handleRegister} className="auth-form">
-              <input
-                type="text"
-                placeholder="اختر اسم مستخدم"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                minLength={3}
-              />
-              <input
-                type="password"
-                placeholder="اختر كلمة مرور"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-              {authError && <p className="error-text">{authError}</p>}
-              <button type="submit" disabled={authLoading}>
-                {authLoading ? "جاري التسجيل..." : "تسجيل"}
-              </button>
-            </form>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (!membership) {
-    return (
-      <div className="centered-screen">
-        <p>لا يوجد لديك عضوية مرتبطة بالنظام.</p>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
-      </div>
-    );
-  }
-
-  if (membership.status === "pending") {
-    return (
-      <div className="centered-screen">
-        <h2>⏳ حسابك قيد المراجعة</h2>
-        <p>بانتظار موافقة المدير على طلب عضويتك.</p>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
-      </div>
-    );
-  }
-
-  if (membership.status === "rejected") {
-    return (
-      <div className="centered-screen">
-        <h2>❌ تم رفض طلب عضويتك</h2>
-        <p>تواصل مع المدير لمزيد من المعلومات.</p>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
-      </div>
-    );
-  }
-
-  if (membership.role === "manager") {
-    return (
-      <div className="dashboard">
-        <header className="dashboard-header">
-          <h1>مِيعاد — لوحة المدير</h1>
-          <button onClick={handleLogout}>تسجيل الخروج</button>
-        </header>
-
-        <section className="panel">
-          <h2>طلبات العضوية المعلقة ({pendingMembers.length})</h2>
-
-          {pendingMessage && <p className="info-text">{pendingMessage}</p>}
-
-          {pendingMembers.length === 0 ? (
-            <p>لا توجد طلبات معلقة حالياً.</p>
-          ) : (
-            <table className="members-table">
-              <thead>
-                <tr>
-                  <th>اسم المستخدم</th>
-                  <th>تاريخ الطلب</th>
-                  <th>الإجراء</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingMembers.map((m) => (
-                  <tr key={m.user_id}>
-                    <td>{m.username}</td>
-                    <td>{new Date(m.created_at).toLocaleDateString("ar")}</td>
-                    <td>
-                      <button
-                        className="approve-btn"
-                        disabled={pendingAction === m.user_id}
-                        onClick={() => updateMemberApproval(m.user_id, "approved")}
-                      >
-                        موافقة
-                      </button>
-                      <button
-                        className="reject-btn"
-                        disabled={pendingAction === m.user_id}
-                        onClick={() => updateMemberApproval(m.user_id, "rejected")}
-                      >
-                        رفض
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
-    );
-  }
-
-  return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>مِيعاد — مرحباً {membership.username}</h1>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
-      </header>
-
-      <section className="panel">
-        <h2>مهامي</h2>
-        {myAssignments.length === 0 ? (
-          <p>لا توجد مهام مسندة لك حالياً.</p>
-        ) : (
-          <ul className="assignments-list">
-            {myAssignments.map((a) => (
-              <li key={a.id} className={`assignment-item status-${a.status}`}>
-                <strong>{a.title}</strong>
-                <p>{a.description}</p>
-                <span className="badge">{a.status}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  );
-}
