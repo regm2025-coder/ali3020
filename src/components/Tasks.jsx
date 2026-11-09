@@ -108,20 +108,48 @@ export default function Tasks({ session, orgId, isManager }) {
         .single();
       if (error) throw error;
 
-      let reminderFailed = false;
+      // الإشعارات المرتبطة بالمهمة: إشعار فوري بالإسناد، وتذكير قبل التسليم بيوم، وتذكير اختياري بموعد يحدده المدير
+      const taskTitle = form.title.trim();
+      const base = {
+        organization_id: orgId,
+        user_id: form.assigned_to,
+        assignment_id: created.id,
+        channel: "push",
+        created_by: userId,
+      };
+      const rows = [
+        {
+          ...base,
+          title: "تم إسناد مهمة جديدة إليك من المدير",
+          body: taskTitle,
+          remind_at: new Date().toISOString(),
+        },
+      ];
+
+      const dueISO = localToISO(form.due_date);
+      if (dueISO) {
+        const dayBefore = new Date(new Date(dueISO).getTime() - 24 * 60 * 60 * 1000);
+        if (dayBefore > new Date()) {
+          rows.push({
+            ...base,
+            title: "تذكير: موعد تسليم مهمتك غداً",
+            body: taskTitle,
+            remind_at: dayBefore.toISOString(),
+          });
+        }
+      }
+
       if (remindISO) {
-        const { error: reminderError } = await supabase.from("reminders").insert({
-          organization_id: orgId,
-          user_id: form.assigned_to,
-          assignment_id: created.id,
-          title: `تذكير بمهمة: ${form.title.trim()}`,
+        rows.push({
+          ...base,
+          title: `تذكير بمهمة: ${taskTitle}`,
           body: form.description.trim() || null,
           remind_at: remindISO,
-          channel: "push",
-          created_by: userId,
         });
-        reminderFailed = Boolean(reminderError);
       }
+
+      const { error: reminderError } = await supabase.from("reminders").insert(rows);
+      const reminderFailed = Boolean(reminderError);
 
       setForm(EMPTY_FORM);
       setShowForm(false);
