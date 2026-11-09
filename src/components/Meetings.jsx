@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Clock, CalendarDays, Trash2, Check, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatDateTime, localToISO } from "../lib/format";
-import { Sheet, Empty } from "./ui";
+import { Sheet, Empty, ConfirmDialog } from "./ui";
 
 const EMPTY_FORM = {
   title: "",
@@ -47,6 +47,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState("");
+  const [toDelete, setToDelete] = useState(null);
   const [message, setMessage] = useState({ type: "", text: "" });
 
   const userId = session.user.id;
@@ -208,7 +209,6 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
   }
 
   async function handleDelete(meeting) {
-    if (!window.confirm(`حذف الاجتماع «${meeting.title}»؟`)) return;
     setBusy(meeting.id);
     setMessage({ type: "", text: "" });
 
@@ -230,6 +230,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
       setMeetings((current) => current.filter((m) => m.id !== meeting.id));
     }
     setBusy("");
+    setToDelete(null);
   }
 
   const now = new Date();
@@ -318,7 +319,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
           className="icon-btn is-danger"
           aria-label={`حذف الاجتماع ${m.title}`}
           disabled={busy === m.id}
-          onClick={() => handleDelete(m)}
+          onClick={() => setToDelete(m)}
         >
           <Trash2 size={18} />
         </button>
@@ -378,7 +379,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
               className="next-delete"
               aria-label={`حذف الاجتماع ${next.title}`}
               disabled={busy === next.id}
-              onClick={() => handleDelete(next)}
+              onClick={() => setToDelete(next)}
             >
               <Trash2 size={18} />
             </button>
@@ -404,6 +405,16 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
         <button className="fab" onClick={() => setShowForm(true)} aria-label="اجتماع جديد">
           <Plus size={26} />
         </button>
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title="حذف الاجتماع؟"
+          message={`«${toDelete.title}»`}
+          busy={busy === toDelete.id}
+          onConfirm={() => handleDelete(toDelete)}
+          onCancel={() => setToDelete(null)}
+        />
       )}
 
       {isManager && showForm && (

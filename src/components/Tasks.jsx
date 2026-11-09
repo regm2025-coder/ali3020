@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, User, CalendarDays, Clock, Bell, Trash2, ListChecks } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { STATUS_LABELS, formatDateTime, localToISO } from "../lib/format";
-import { Sheet, Empty } from "./ui";
+import { Sheet, Empty, ConfirmDialog } from "./ui";
 
 const EMPTY_FORM = {
   title: "",
@@ -21,6 +21,7 @@ export default function Tasks({ session, orgId, isManager }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState("");
+  const [toDelete, setToDelete] = useState(null);
   const [message, setMessage] = useState({ type: "", text: "" });
 
   const userId = session.user.id;
@@ -155,7 +156,6 @@ export default function Tasks({ session, orgId, isManager }) {
   }
 
   async function handleDelete(task) {
-    if (!window.confirm(`حذف المهمة «${task.title}»؟`)) return;
     setBusy(task.id);
     setMessage({ type: "", text: "" });
 
@@ -172,6 +172,7 @@ export default function Tasks({ session, orgId, isManager }) {
       setTasks((current) => current.filter((t) => t.id !== task.id));
     }
     setBusy("");
+    setToDelete(null);
   }
 
   const visible =
@@ -282,7 +283,7 @@ export default function Tasks({ session, orgId, isManager }) {
                     className="icon-btn is-danger"
                     aria-label={`حذف المهمة ${t.title}`}
                     disabled={busy === t.id}
-                    onClick={() => handleDelete(t)}
+                    onClick={() => setToDelete(t)}
                   >
                     <Trash2 size={18} />
                   </button>
@@ -297,6 +298,16 @@ export default function Tasks({ session, orgId, isManager }) {
         <button className="fab" onClick={() => setShowForm(true)} aria-label="مهمة جديدة">
           <Plus size={26} />
         </button>
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title="حذف المهمة؟"
+          message={`«${toDelete.title}»`}
+          busy={busy === toDelete.id}
+          onConfirm={() => handleDelete(toDelete)}
+          onCancel={() => setToDelete(null)}
+        />
       )}
 
       {isManager && showForm && (
