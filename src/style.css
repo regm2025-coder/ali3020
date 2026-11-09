@@ -989,3 +989,120 @@ p {
     transition: none !important;
   }
 }
+
+/* ---------- الرد على الاجتماع (حضور / اعتذار) ---------- */
+
+.rsvp {
+  position: relative;
+  z-index: 1;
+  margin-top: 14px;
+}
+
+.rsvp-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.rsvp-btn {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rsvp-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rsvp-btn.is-yes.is-active {
+  border-color: #3e9b73;
+  background: #3e9b73;
+  color: #fff;
+}
+
+.rsvp-btn.is-no.is-active {
+  border-color: var(--coral);
+  background: var(--coral);
+  color: #fff;
+}
+
+.next-card .rsvp-btn {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.next-card .rsvp-btn.is-yes.is-active {
+  border-color: #3e9b73;
+  background: #3e9b73;
+}
+
+.next-card .rsvp-btn.is-no.is-active {
+  border-color: var(--coral);
+  background: var(--coral);
+}
+
+.rsvp-summary {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.rsvp-summary summary {
+  cursor: pointer;
+}
+
+.rsvp-summary ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rsvp-summary li {
+  padding: 3px 0;
+}
+
+.rsvp-summary li.is-yes {
+  color: #2d7a58;
+}
+
+.rsvp-summary li.is-no {
+  color: var(--coral);
+}
+
+.next-card .rsvp-summary,
+.next-card .rsvp-summary li,
+.next-card .rsvp-summary li.is-yes,
+.next-card .rsvp-summary li.is-no {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.confirm-bar {
+  padding: 14px 16px;
+  border: 1.5px solid var(--saffron);
+  border-radius: var(--radius);
+  background: var(--saffron-soft);
+}
+
+.confirm-bar p {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}

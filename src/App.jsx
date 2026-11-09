@@ -50,19 +50,31 @@ export default function App() {
   const [pendingAction, setPendingAction] = useState("");
   const [pendingMessage, setPendingMessage] = useState("");
 
-  const [tab, setTab] = useState(() => {
-    // الإشعار يفتح التطبيق على الصفحة المعنية: /?tab=meetings
-    const wanted = new URLSearchParams(window.location.search).get("tab");
-    return wanted === "meetings" ? "meetings" : "tasks";
+  // الإشعار يفتح التطبيق على صفحة معيّنة: /?tab=meetings&meeting=ID&rsvp=attending
+  const parseTarget = (href) => {
+    const q = new URL(href, window.location.origin).searchParams;
+    const rsvp = q.get("rsvp");
+    return {
+      tab: q.get("tab") === "meetings" ? "meetings" : "tasks",
+      meetingId: q.get("meeting"),
+      rsvp: rsvp === "attending" || rsvp === "absent" ? rsvp : null,
+    };
+  };
+
+  const [tab, setTab] = useState(() => parseTarget(window.location.href).tab);
+  const [intent, setIntent] = useState(() => {
+    const t = parseTarget(window.location.href);
+    return t.meetingId ? { meetingId: t.meetingId, rsvp: t.rsvp } : null;
   });
 
-  // التطبيق مفتوح وضُغط على إشعار: ينتقل إلى تبويب المهام أو الاجتماعات
+  // التطبيق مفتوح وضُغط على إشعار: ينتقل إلى الصفحة المعنية
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (event) => {
       if (event.data?.type !== "NAVIGATE") return;
-      const wanted = new URL(event.data.url, window.location.origin).searchParams.get("tab");
-      setTab(wanted === "meetings" ? "meetings" : "tasks");
+      const t = parseTarget(event.data.url);
+      setTab(t.tab);
+      setIntent(t.meetingId ? { meetingId: t.meetingId, rsvp: t.rsvp } : null);
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
@@ -458,7 +470,16 @@ export default function App() {
           <Tasks session={session} orgId={ORG_ID} isManager={isManager} />
         )}
         {tab === "meetings" && (
-          <Meetings session={session} orgId={ORG_ID} isManager={isManager} />
+          <Meetings
+            session={session}
+            orgId={ORG_ID}
+            isManager={isManager}
+            intent={intent}
+            onIntentDone={() => {
+              setIntent(null);
+              window.history.replaceState(null, "", "/");
+            }}
+          />
         )}
 
         {tab === "members" && isManager && (
