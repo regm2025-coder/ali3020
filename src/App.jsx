@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ListChecks, CalendarDays, Users, User, Clock, X } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
-import { disablePush } from "./lib/push";
+import { disablePush, syncPush } from "./lib/push";
 import Tasks from "./components/Tasks";
 import Meetings from "./components/Meetings";
 import Settings from "./components/Settings";
@@ -144,6 +144,13 @@ export default function App() {
       loadPendingMembers();
     }
   }, [membership, loadPendingMembers]);
+
+  // نضمن أن الجهاز مشترك في الإشعارات عند كل فتح للتطبيق (إن كان الإذن ممنوحاً)
+  useEffect(() => {
+    if (session && membership?.status === "approved") {
+      syncPush(session.user.id).catch(() => {});
+    }
+  }, [session, membership]);
 
   async function handleLogin(event) {
     event.preventDefault();
