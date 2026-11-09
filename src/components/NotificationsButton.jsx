@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Bell } from "lucide-react";
-import { getPushState, enablePush, disablePush } from "../lib/push";
+import { getPushState, enablePush, disablePush, setOptOut } from "../lib/push";
 
 const STATE_TEXT = {
   unsupported: "غير مدعومة في هذا المتصفح. على الآيفون ثبّت التطبيق أولاً.",
@@ -39,6 +39,7 @@ export default function NotificationsButton({ userId }) {
     setError("");
     try {
       await disablePush();
+      setOptOut(true);
       setState("off");
     } catch {
       setError("تعذر إيقاف الإشعارات.");
