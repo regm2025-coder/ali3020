@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Clock, CalendarDays, Trash2 } from "lucide-react";
+import { Plus, Clock, CalendarDays, Trash2, Check, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatDateTime, localToISO } from "../lib/format";
 import { Sheet, Empty } from "./ui";
@@ -39,8 +39,11 @@ const monthOf = (v) => new Date(v).toLocaleDateString("ar", { month: "short" });
 const timeOf = (v) =>
   new Date(v).toLocaleTimeString("ar", { hour: "numeric", minute: "2-digit" });
 
-export default function Meetings({ session, orgId, isManager }) {
+export default function Meetings({ session, orgId, isManager, intent, onIntentDone }) {
   const [meetings, setMeetings] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState("");
@@ -60,11 +63,72 @@ export default function Meetings({ session, orgId, isManager }) {
       return;
     }
     setMeetings(data || []);
+
+    // ردود الحضور: العضو يرى ردّه فقط، والمدير يرى الجميع (RLS يضمن ذلك)
+    const { data: replies } = await supabase
+      .from("meeting_attendance")
+      .select("meeting_id, user_id, response");
+    setAttendance(replies || []);
+    setLoaded(true);
   }, [orgId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isManager) return;
+    supabase
+      .from("memberships")
+      .select("user_id, username")
+      .eq("organization_id", orgId)
+      .eq("status", "approved")
+      .then(({ data }) => setPeople(data || []));
+  }, [isManager, orgId]);
+
+  const myReply = (meetingId) =>
+    attendance.find((a) => a.meeting_id === meetingId && a.user_id === userId)?.response;
+
+  async function respond(meeting, response) {
+    setMessage({ type: "", text: "" });
+    setBusy(`rsvp-${meeting.id}`);
+    const { error } = await supabase.from("meeting_attendance").upsert(
+      {
+        meeting_id: meeting.id,
+        user_id: userId,
+        organization_id: orgId,
+        response,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "meeting_id,user_id" }
+    );
+    if (error) {
+      setMessage({ type: "error", text: "تعذر تسجيل ردّك. حاول مرة أخرى." });
+    } else {
+      setAttendance((cur) => [
+        ...cur.filter((a) => !(a.meeting_id === meeting.id && a.user_id === userId)),
+        { meeting_id: meeting.id, user_id: userId, response },
+      ]);
+      setMessage({
+        type: "success",
+        text: response === "attending" ? "تم تسجيل حضورك." : "تم تسجيل اعتذارك.",
+      });
+    }
+    setBusy("");
+  }
+
+  // الضغط على زر في الإشعار يفتح هنا مع الرد المختار، فيكفي تأكيد واحد
+  const target = intent ? meetings.find((m) => m.id === intent.meetingId) : null;
+
+  useEffect(() => {
+    // الاجتماع غير موجود (حُذف مثلاً) أو لا يوجد رد مختار: لا شيء ننتظره
+    if (loaded && intent && (!target || !intent.rsvp)) onIntentDone?.();
+  }, [loaded, intent, target, onIntentDone]);
+
+  async function confirmIntent() {
+    await respond(target, intent.rsvp);
+    onIntentDone?.();
+  }
 
   function setField(name, value) {
     setForm((f) => ({ ...f, [name]: value }));
@@ -176,6 +240,62 @@ export default function Meetings({ session, orgId, isManager }) {
   const next = upcoming[0];
   const later = upcoming.slice(1);
 
+  const renderRsvp = (m) => {
+    const mine = myReply(m.id);
+    const working = busy === `rsvp-${m.id}`;
+    const replies = attendance.filter((a) => a.meeting_id === m.id);
+    const yes = replies.filter((a) => a.response === "attending");
+    const no = replies.filter((a) => a.response === "absent");
+    const nameOf = (id) => people.find((p) => p.user_id === id)?.username || "—";
+    const waiting = people.filter((p) => !replies.some((a) => a.user_id === p.user_id));
+
+    return (
+      <div className="rsvp">
+        <div className="rsvp-buttons" role="group" aria-label="الرد على الاجتماع">
+          <button
+            type="button"
+            className={mine === "attending" ? "rsvp-btn is-yes is-active" : "rsvp-btn is-yes"}
+            aria-pressed={mine === "attending"}
+            disabled={working}
+            onClick={() => mine !== "attending" && respond(m, "attending")}
+          >
+            <Check size={16} />
+            سأحضر
+          </button>
+          <button
+            type="button"
+            className={mine === "absent" ? "rsvp-btn is-no is-active" : "rsvp-btn is-no"}
+            aria-pressed={mine === "absent"}
+            disabled={working}
+            onClick={() => mine !== "absent" && respond(m, "absent")}
+          >
+            <X size={16} />
+            أعتذر
+          </button>
+        </div>
+        {isManager && (
+          <details className="rsvp-summary">
+            <summary>
+              {yes.length.toLocaleString("ar")} حاضر · {no.length.toLocaleString("ar")} معتذر ·{" "}
+              {waiting.length.toLocaleString("ar")} لم يردّوا
+            </summary>
+            <ul>
+              {yes.map((a) => (
+                <li key={a.user_id} className="is-yes">{nameOf(a.user_id)} — سيحضر</li>
+              ))}
+              {no.map((a) => (
+                <li key={a.user_id} className="is-no">{nameOf(a.user_id)} — يعتذر</li>
+              ))}
+              {waiting.map((p) => (
+                <li key={p.user_id}>{p.username} — لم يردّ</li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    );
+  };
+
   const renderItem = (m, isPast) => (
     <li key={m.id} className={isPast ? "meeting is-past" : "meeting"}>
       <div className="date-block" aria-hidden="true">
@@ -191,6 +311,7 @@ export default function Meetings({ session, orgId, isManager }) {
           </span>
         </div>
         {m.description && <p className="task-desc">{m.description}</p>}
+        {!isPast && renderRsvp(m)}
       </div>
       {isManager && (
         <button
@@ -211,6 +332,23 @@ export default function Meetings({ session, orgId, isManager }) {
         <p className={message.type === "error" ? "notice notice-error" : "notice notice-ok"}>
           {message.text}
         </p>
+      )}
+
+      {target && intent?.rsvp && (
+        <div className="confirm-bar" role="alert">
+          <p>
+            تأكيد ردّك على «{target.title}»:{" "}
+            <strong>{intent.rsvp === "attending" ? "سأحضر" : "أعتذر"}</strong>
+          </p>
+          <div className="confirm-actions">
+            <button className="btn btn-primary btn-sm" disabled={busy !== ""} onClick={confirmIntent}>
+              تأكيد
+            </button>
+            <button className="btn btn-quiet btn-sm" onClick={() => onIntentDone?.()}>
+              إلغاء
+            </button>
+          </div>
+        </div>
       )}
 
       {meetings.length === 0 && (
@@ -234,6 +372,7 @@ export default function Meetings({ session, orgId, isManager }) {
             {formatDateTime(next.meeting_date)}
           </p>
           {next.description && <p className="next-desc">{next.description}</p>}
+          {renderRsvp(next)}
           {isManager && (
             <button
               className="next-delete"
