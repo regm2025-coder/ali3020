@@ -212,7 +212,7 @@ export default function Tasks({ session, orgId, isManager }) {
     t.status !== "completed" && t.due_date && new Date(t.due_date) < new Date();
 
   const filters = [
-    ["all", "الكل", tasks.length],
+    ["all", "الإجمالي", tasks.length],
     ["new", STATUS_LABELS.new, count("new")],
     ["in_progress", STATUS_LABELS.in_progress, count("in_progress")],
     ["completed", STATUS_LABELS.completed, count("completed")],
@@ -226,17 +226,18 @@ export default function Tasks({ session, orgId, isManager }) {
         </p>
       )}
 
-      <div className="chips" role="tablist" aria-label="تصفية المهام">
+      <div className="stats" role="tablist" aria-label="تصفية المهام">
         {filters.map(([value, label, n]) => (
           <button
             key={value}
             role="tab"
+            data-filter={value}
             aria-selected={filter === value}
-            className={filter === value ? "chip is-active" : "chip"}
+            className={filter === value ? "stat is-active" : "stat"}
             onClick={() => setFilter(value)}
           >
-            {label}
-            <span className="chip-count">{n.toLocaleString("ar")}</span>
+            <strong>{n.toLocaleString("ar")}</strong>
+            <span>{label}</span>
           </button>
         ))}
       </div>
