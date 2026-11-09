@@ -65,14 +65,25 @@ self.addEventListener("push", (event) => {
       badge: "/icon-192.png",
       dir: "rtl",
       lang: "ar",
-      data: { url: data.url || "/" },
+      // اجتماع: زرّان للرد من الإشعار نفسه (أندرويد). الضغط يفتح التطبيق للتأكيد.
+      actions: data.meetingId
+        ? [
+            { action: "attending", title: "سأحضر" },
+            { action: "absent", title: "أعتذر" },
+          ]
+        : [],
+      data: { url: data.url || "/", meetingId: data.meetingId || null },
     })
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  let url = (event.notification.data && event.notification.data.url) || "/";
+  // زر «سأحضر» أو «أعتذر»: نضيف الرد المختار إلى الرابط
+  if (event.action === "attending" || event.action === "absent") {
+    url += (url.includes("?") ? "&" : "?") + "rsvp=" + event.action;
+  }
 
   event.waitUntil(
     self.clients
