@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { Plus, User, CalendarDays, Clock, Bell, Trash2, ListChecks } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { STATUS_LABELS, formatDateTime, localToISO } from "../lib/format";
+import { Sheet, Empty } from "./ui";
 
 const EMPTY_FORM = {
   title: "",
@@ -36,7 +38,7 @@ export default function Tasks({ session, orgId, isManager }) {
 
     const { data, error } = await query;
     if (error) {
-      setMessage({ type: "error", text: "تعذر تحميل المهام." });
+      setMessage({ type: "error", text: "تعذر تحميل المهام. اسحب لتحديث الصفحة وحاول مرة أخرى." });
       return;
     }
     setTasks(data || []);
@@ -72,6 +74,10 @@ export default function Tasks({ session, orgId, isManager }) {
     setForm((f) => ({ ...f, [name]: value }));
   }
 
+  function closeForm() {
+    setShowForm(false);
+  }
+
   async function handleCreate(event) {
     event.preventDefault();
     setMessage({ type: "", text: "" });
@@ -101,6 +107,7 @@ export default function Tasks({ session, orgId, isManager }) {
         .single();
       if (error) throw error;
 
+      let reminderFailed = false;
       if (remindISO) {
         const { error: reminderError } = await supabase.from("reminders").insert({
           organization_id: orgId,
@@ -112,24 +119,19 @@ export default function Tasks({ session, orgId, isManager }) {
           channel: "push",
           created_by: userId,
         });
-        if (reminderError) {
-          setMessage({
-            type: "error",
-            text: "أُنشئت المهمة لكن تعذر إنشاء التذكير.",
-          });
-          setForm(EMPTY_FORM);
-          setShowForm(false);
-          await load();
-          return;
-        }
+        reminderFailed = Boolean(reminderError);
       }
 
       setForm(EMPTY_FORM);
       setShowForm(false);
-      setMessage({ type: "success", text: "تمت إضافة المهمة بنجاح." });
+      setMessage(
+        reminderFailed
+          ? { type: "error", text: "أُنشئت المهمة لكن تعذر إنشاء التذكير." }
+          : { type: "success", text: "تمت إضافة المهمة." }
+      );
       await load();
     } catch {
-      setMessage({ type: "error", text: "تعذر إضافة المهمة." });
+      setMessage({ type: "error", text: "تعذر إضافة المهمة. تحقق من البيانات وحاول مرة أخرى." });
     } finally {
       setBusy("");
     }
@@ -175,171 +177,203 @@ export default function Tasks({ session, orgId, isManager }) {
   const visible =
     filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
 
+  const count = (status) => tasks.filter((t) => t.status === status).length;
+
   const isOverdue = (t) =>
     t.status !== "completed" && t.due_date && new Date(t.due_date) < new Date();
 
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>{isManager ? "المهام" : "مهامي"} ({tasks.length})</h2>
-        {isManager && (
-          <button
-            className="primary-btn"
-            onClick={() => setShowForm((v) => !v)}
-          >
-            {showForm ? "إغلاق" : "+ مهمة جديدة"}
-          </button>
-        )}
-      </div>
+  const filters = [
+    ["all", "الكل", tasks.length],
+    ["new", STATUS_LABELS.new, count("new")],
+    ["in_progress", STATUS_LABELS.in_progress, count("in_progress")],
+    ["completed", STATUS_LABELS.completed, count("completed")],
+  ];
 
+  return (
+    <section className="page">
       {message.text && (
-        <p className={message.type === "error" ? "error-text" : "info-text"}>
+        <p className={message.type === "error" ? "notice notice-error" : "notice notice-ok"}>
           {message.text}
         </p>
       )}
 
-      {isManager && showForm && (
-        <form className="item-form" onSubmit={handleCreate}>
-          <input
-            type="text"
-            placeholder="عنوان المهمة"
-            value={form.title}
-            onChange={(e) => setField("title", e.target.value)}
-            required
-          />
-          <textarea
-            placeholder="وصف المهمة (اختياري)"
-            rows={3}
-            value={form.description}
-            onChange={(e) => setField("description", e.target.value)}
-          />
-          <label>
-            المكلَّف
-            <select
-              value={form.assigned_to}
-              onChange={(e) => setField("assigned_to", e.target.value)}
-              required
-            >
-              <option value="">— اختر موظفاً —</option>
-              {members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.username}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            الاجتماع المرتبط (اختياري)
-            <select
-              value={form.meeting_id}
-              onChange={(e) => setField("meeting_id", e.target.value)}
-            >
-              <option value="">— بدون —</option>
-              {meetings.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="form-row">
-            <label>
-              موعد التسليم
-              <input
-                type="datetime-local"
-                value={form.due_date}
-                onChange={(e) => setField("due_date", e.target.value)}
-              />
-            </label>
-            <label>
-              موعد التذكير
-              <input
-                type="datetime-local"
-                value={form.remind_at}
-                onChange={(e) => setField("remind_at", e.target.value)}
-              />
-            </label>
-          </div>
-          <button type="submit" className="primary-btn" disabled={busy === "create"}>
-            {busy === "create" ? "جاري الحفظ..." : "حفظ المهمة"}
-          </button>
-        </form>
-      )}
-
-      <div className="chips">
-        {[
-          ["all", "الكل"],
-          ["new", STATUS_LABELS.new],
-          ["in_progress", STATUS_LABELS.in_progress],
-          ["completed", STATUS_LABELS.completed],
-        ].map(([value, label]) => (
+      <div className="chips" role="tablist" aria-label="تصفية المهام">
+        {filters.map(([value, label, n]) => (
           <button
             key={value}
-            className={filter === value ? "chip active" : "chip"}
+            role="tab"
+            aria-selected={filter === value}
+            className={filter === value ? "chip is-active" : "chip"}
             onClick={() => setFilter(value)}
           >
             {label}
+            <span className="chip-count">{n.toLocaleString("ar")}</span>
           </button>
         ))}
       </div>
 
       {visible.length === 0 ? (
-        <p className="empty-text">
-          {tasks.length === 0
-            ? isManager
-              ? "لا توجد مهام بعد. أضف أول مهمة."
-              : "لا توجد مهام مسندة لك حالياً."
-            : "لا توجد مهام بهذه الحالة."}
-        </p>
+        tasks.length === 0 ? (
+          <Empty
+            icon={ListChecks}
+            title={isManager ? "لا توجد مهام بعد" : "لا توجد مهام مسندة لك"}
+            hint={
+              isManager
+                ? "اضغط زر «+» لتكليف أحد الموظفين بأول مهمة."
+                : "ستظهر هنا المهام التي يكلّفك بها المدير."
+            }
+          />
+        ) : (
+          <Empty icon={ListChecks} title="لا توجد مهام بهذه الحالة" hint="جرّب تصفية أخرى من الأعلى." />
+        )
       ) : (
-        <ul className="assignments-list">
+        <ul className="list">
           {visible.map((t) => (
-            <li key={t.id} className={`assignment-item status-${t.status}`}>
-              <div className="item-top">
-                <strong>{t.title}</strong>
-                <span className={`badge badge-${t.status}`}>
-                  {STATUS_LABELS[t.status]}
-                </span>
-              </div>
-              {t.description && <p>{t.description}</p>}
-              <div className="item-meta">
-                {isManager && <span>المكلَّف: {usernameOf(t.assigned_to)}</span>}
+            <li key={t.id} className="task" data-status={t.status}>
+              <h3>{t.title}</h3>
+              {t.description && <p className="task-desc">{t.description}</p>}
+
+              <div className="meta">
+                {isManager && (
+                  <span className="meta-item">
+                    <User size={14} />
+                    {usernameOf(t.assigned_to)}
+                  </span>
+                )}
                 {t.meeting_id && meetingOf(t.meeting_id) && (
-                  <span>الاجتماع: {meetingOf(t.meeting_id)}</span>
+                  <span className="meta-item">
+                    <CalendarDays size={14} />
+                    {meetingOf(t.meeting_id)}
+                  </span>
                 )}
                 {t.due_date && (
-                  <span className={isOverdue(t) ? "overdue" : ""}>
-                    التسليم: {formatDateTime(t.due_date)}
+                  <span className={isOverdue(t) ? "meta-item is-late" : "meta-item"}>
+                    <Clock size={14} />
+                    {formatDateTime(t.due_date)}
                     {isOverdue(t) && " (متأخرة)"}
                   </span>
                 )}
-                {t.remind_at && <span>🔔 {formatDateTime(t.remind_at)}</span>}
+                {t.remind_at && (
+                  <span className="meta-item">
+                    <Bell size={14} />
+                    {formatDateTime(t.remind_at)}
+                  </span>
+                )}
               </div>
-              <div className="item-actions">
-                <select
-                  value={t.status}
-                  disabled={busy === t.id}
-                  onChange={(e) => changeStatus(t, e.target.value)}
-                >
+
+              <div className="task-foot">
+                <div className="status-control" role="group" aria-label="حالة المهمة">
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
+                    <button
+                      key={value}
+                      type="button"
+                      className={t.status === value ? "status-btn is-active" : "status-btn"}
+                      data-status={value}
+                      aria-pressed={t.status === value}
+                      disabled={busy === t.id}
+                      onClick={() => t.status !== value && changeStatus(t, value)}
+                    >
                       {label}
-                    </option>
+                    </button>
                   ))}
-                </select>
+                </div>
                 {isManager && (
                   <button
-                    className="reject-btn"
+                    className="icon-btn is-danger"
+                    aria-label={`حذف المهمة ${t.title}`}
                     disabled={busy === t.id}
                     onClick={() => handleDelete(t)}
                   >
-                    حذف
+                    <Trash2 size={18} />
                   </button>
                 )}
               </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {isManager && (
+        <button className="fab" onClick={() => setShowForm(true)} aria-label="مهمة جديدة">
+          <Plus size={26} />
+        </button>
+      )}
+
+      {isManager && showForm && (
+        <Sheet title="مهمة جديدة" onClose={closeForm}>
+          <form className="form" onSubmit={handleCreate}>
+            <label className="field">
+              <span>عنوان المهمة</span>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => setField("title", e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>الوصف (اختياري)</span>
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={(e) => setField("description", e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>المكلَّف</span>
+              <select
+                value={form.assigned_to}
+                onChange={(e) => setField("assigned_to", e.target.value)}
+                required
+              >
+                <option value="">اختر موظفاً</option>
+                {members.map((m) => (
+                  <option key={m.user_id} value={m.user_id}>
+                    {m.username}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>الاجتماع المرتبط (اختياري)</span>
+              <select
+                value={form.meeting_id}
+                onChange={(e) => setField("meeting_id", e.target.value)}
+              >
+                <option value="">بدون اجتماع</option>
+                {meetings.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="field-row">
+              <label className="field">
+                <span>موعد التسليم</span>
+                <input
+                  type="datetime-local"
+                  value={form.due_date}
+                  onChange={(e) => setField("due_date", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>موعد التذكير</span>
+                <input
+                  type="datetime-local"
+                  value={form.remind_at}
+                  onChange={(e) => setField("remind_at", e.target.value)}
+                />
+              </label>
+            </div>
+            {message.type === "error" && message.text && (
+              <p className="field-error">{message.text}</p>
+            )}
+            <button type="submit" className="btn btn-primary btn-block" disabled={busy === "create"}>
+              {busy === "create" ? "جاري الحفظ" : "حفظ المهمة"}
+            </button>
+          </form>
+        </Sheet>
       )}
     </section>
   );

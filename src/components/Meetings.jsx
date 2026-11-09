@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { Plus, Clock, CalendarDays, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatDateTime, localToISO } from "../lib/format";
+import { Sheet, Empty } from "./ui";
 
 const EMPTY_FORM = {
   title: "",
@@ -11,6 +13,31 @@ const EMPTY_FORM = {
 
 // قبل كم دقيقة من الاجتماع يصل التذكير
 const REMIND_BEFORE_MINUTES = 60;
+
+const num = (n) => n.toLocaleString("ar");
+
+// «بعد ساعتين»، «بعد ٣ أيام»... بصيغ العدد الصحيحة في العربية
+function unit(n, one, two, few, many) {
+  if (n === 1) return `بعد ${one}`;
+  if (n === 2) return `بعد ${two}`;
+  if (n <= 10) return `بعد ${num(n)} ${few}`;
+  return `بعد ${num(n)} ${many}`;
+}
+
+function relativeTime(value) {
+  const minutes = Math.max(0, Math.round((new Date(value) - new Date()) / 60000));
+  if (minutes < 1) return "الآن";
+  if (minutes < 60) return unit(minutes, "دقيقة", "دقيقتين", "دقائق", "دقيقة");
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return unit(hours, "ساعة", "ساعتين", "ساعات", "ساعة");
+  const days = Math.round(hours / 24);
+  return unit(days, "يوم", "يومين", "أيام", "يوماً");
+}
+
+const dayOf = (v) => new Date(v).toLocaleDateString("ar", { day: "numeric" });
+const monthOf = (v) => new Date(v).toLocaleDateString("ar", { month: "short" });
+const timeOf = (v) =>
+  new Date(v).toLocaleTimeString("ar", { hour: "numeric", minute: "2-digit" });
 
 export default function Meetings({ session, orgId, isManager }) {
   const [meetings, setMeetings] = useState([]);
@@ -29,7 +56,7 @@ export default function Meetings({ session, orgId, isManager }) {
       .order("meeting_date", { ascending: true });
 
     if (error) {
-      setMessage({ type: "error", text: "تعذر تحميل الاجتماعات." });
+      setMessage({ type: "error", text: "تعذر تحميل الاجتماعات. حاول مرة أخرى بعد قليل." });
       return;
     }
     setMeetings(data || []);
@@ -41,6 +68,10 @@ export default function Meetings({ session, orgId, isManager }) {
 
   function setField(name, value) {
     setForm((f) => ({ ...f, [name]: value }));
+  }
+
+  function closeForm() {
+    setShowForm(false);
   }
 
   async function handleCreate(event) {
@@ -93,20 +124,20 @@ export default function Meetings({ session, orgId, isManager }) {
               }))
             );
           reminderNote = reminderError
-            ? " (تعذر إنشاء التذكيرات)"
-            : " وسيصل تذكير للجميع قبل ساعة.";
+            ? " لكن تعذر إنشاء التذكيرات."
+            : " وسيصل تذكير للجميع قبله بساعة.";
         }
       }
 
       setForm(EMPTY_FORM);
       setShowForm(false);
       setMessage({
-        type: "success",
+        type: reminderNote.includes("تعذر") ? "error" : "success",
         text: `تمت إضافة الاجتماع${reminderNote}`,
       });
       await load();
     } catch {
-      setMessage({ type: "error", text: "تعذر إضافة الاجتماع." });
+      setMessage({ type: "error", text: "تعذر إضافة الاجتماع. تحقق من البيانات وحاول مرة أخرى." });
     } finally {
       setBusy("");
     }
@@ -142,105 +173,145 @@ export default function Meetings({ session, orgId, isManager }) {
   const past = meetings
     .filter((m) => new Date(m.meeting_date) < now)
     .reverse();
+  const next = upcoming[0];
+  const later = upcoming.slice(1);
 
-  const renderList = (list) => (
-    <ul className="assignments-list">
-      {list.map((m) => (
-        <li key={m.id} className="assignment-item">
-          <div className="item-top">
-            <strong>{m.title}</strong>
-            <span className="badge">{formatDateTime(m.meeting_date)}</span>
-          </div>
-          {m.description && <p>{m.description}</p>}
-          {isManager && (
-            <div className="item-actions">
-              <button
-                className="reject-btn"
-                disabled={busy === m.id}
-                onClick={() => handleDelete(m)}
-              >
-                حذف
-              </button>
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
+  const renderItem = (m, isPast) => (
+    <li key={m.id} className={isPast ? "meeting is-past" : "meeting"}>
+      <div className="date-block" aria-hidden="true">
+        <strong>{dayOf(m.meeting_date)}</strong>
+        <span>{monthOf(m.meeting_date)}</span>
+      </div>
+      <div className="meeting-body">
+        <h3>{m.title}</h3>
+        <div className="meta">
+          <span className="meta-item">
+            <Clock size={14} />
+            {timeOf(m.meeting_date)}
+          </span>
+        </div>
+        {m.description && <p className="task-desc">{m.description}</p>}
+      </div>
+      {isManager && (
+        <button
+          className="icon-btn is-danger"
+          aria-label={`حذف الاجتماع ${m.title}`}
+          disabled={busy === m.id}
+          onClick={() => handleDelete(m)}
+        >
+          <Trash2 size={18} />
+        </button>
+      )}
+    </li>
   );
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>الاجتماعات ({meetings.length})</h2>
-        {isManager && (
-          <button
-            className="primary-btn"
-            onClick={() => setShowForm((v) => !v)}
-          >
-            {showForm ? "إغلاق" : "+ اجتماع جديد"}
-          </button>
-        )}
-      </div>
-
+    <section className="page">
       {message.text && (
-        <p className={message.type === "error" ? "error-text" : "info-text"}>
+        <p className={message.type === "error" ? "notice notice-error" : "notice notice-ok"}>
           {message.text}
         </p>
       )}
 
-      {isManager && showForm && (
-        <form className="item-form" onSubmit={handleCreate}>
-          <input
-            type="text"
-            placeholder="عنوان الاجتماع"
-            value={form.title}
-            onChange={(e) => setField("title", e.target.value)}
-            required
-          />
-          <textarea
-            placeholder="الوصف أو جدول الأعمال (اختياري)"
-            rows={3}
-            value={form.description}
-            onChange={(e) => setField("description", e.target.value)}
-          />
-          <label>
-            موعد الاجتماع
-            <input
-              type="datetime-local"
-              value={form.meeting_date}
-              onChange={(e) => setField("meeting_date", e.target.value)}
-              required
-            />
-          </label>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={form.remind}
-              onChange={(e) => setField("remind", e.target.checked)}
-            />
-            تذكير جميع الأعضاء قبل الاجتماع بساعة
-          </label>
-          <button type="submit" className="primary-btn" disabled={busy === "create"}>
-            {busy === "create" ? "جاري الحفظ..." : "حفظ الاجتماع"}
-          </button>
-        </form>
+      {meetings.length === 0 && (
+        <Empty
+          icon={CalendarDays}
+          title="لا توجد اجتماعات مجدولة"
+          hint={
+            isManager
+              ? "اضغط زر «+» لجدولة أول اجتماع، وسيصل تذكير للجميع قبله."
+              : "ستظهر هنا الاجتماعات التي يجدولها المدير."
+          }
+        />
       )}
 
-      {meetings.length === 0 ? (
-        <p className="empty-text">
-          {isManager ? "لا توجد اجتماعات بعد. أضف أول اجتماع." : "لا توجد اجتماعات مجدولة."}
-        </p>
-      ) : (
-        <>
-          <h3 className="list-title">القادمة ({upcoming.length})</h3>
-          {upcoming.length ? renderList(upcoming) : <p className="empty-text">لا توجد اجتماعات قادمة.</p>}
-          {past.length > 0 && (
-            <>
-              <h3 className="list-title">السابقة ({past.length})</h3>
-              {renderList(past)}
-            </>
+      {next && (
+        <article className="next-card">
+          <span className="next-when">{relativeTime(next.meeting_date)}</span>
+          <h3>{next.title}</h3>
+          <p className="next-time">
+            <Clock size={16} />
+            {formatDateTime(next.meeting_date)}
+          </p>
+          {next.description && <p className="next-desc">{next.description}</p>}
+          {isManager && (
+            <button
+              className="next-delete"
+              aria-label={`حذف الاجتماع ${next.title}`}
+              disabled={busy === next.id}
+              onClick={() => handleDelete(next)}
+            >
+              <Trash2 size={18} />
+            </button>
           )}
+        </article>
+      )}
+
+      {later.length > 0 && (
+        <>
+          <h2 className="section-title">القادمة</h2>
+          <ul className="list">{later.map((m) => renderItem(m, false))}</ul>
         </>
+      )}
+
+      {past.length > 0 && (
+        <>
+          <h2 className="section-title">السابقة</h2>
+          <ul className="list">{past.map((m) => renderItem(m, true))}</ul>
+        </>
+      )}
+
+      {isManager && (
+        <button className="fab" onClick={() => setShowForm(true)} aria-label="اجتماع جديد">
+          <Plus size={26} />
+        </button>
+      )}
+
+      {isManager && showForm && (
+        <Sheet title="اجتماع جديد" onClose={closeForm}>
+          <form className="form" onSubmit={handleCreate}>
+            <label className="field">
+              <span>عنوان الاجتماع</span>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => setField("title", e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>الوصف أو جدول الأعمال (اختياري)</span>
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={(e) => setField("description", e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>موعد الاجتماع</span>
+              <input
+                type="datetime-local"
+                value={form.meeting_date}
+                onChange={(e) => setField("meeting_date", e.target.value)}
+                required
+              />
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={form.remind}
+                onChange={(e) => setField("remind", e.target.checked)}
+              />
+              <span>تذكير جميع الأعضاء قبل الاجتماع بساعة</span>
+            </label>
+            {message.type === "error" && message.text && (
+              <p className="field-error">{message.text}</p>
+            )}
+            <button type="submit" className="btn btn-primary btn-block" disabled={busy === "create"}>
+              {busy === "create" ? "جاري الحفظ" : "حفظ الاجتماع"}
+            </button>
+          </form>
+        </Sheet>
       )}
     </section>
   );

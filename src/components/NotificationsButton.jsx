@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
+import { Bell } from "lucide-react";
 import { getPushState, enablePush, disablePush } from "../lib/push";
+
+const STATE_TEXT = {
+  unsupported: "غير مدعومة في هذا المتصفح. على الآيفون ثبّت التطبيق أولاً.",
+  denied: "محجوبة. فعّلها من إعدادات المتصفح لهذا الموقع.",
+  off: "فعّلها لتصلك تذكيرات المهام والاجتماعات.",
+  subscribed: "مفعّلة على هذا الجهاز.",
+};
 
 export default function NotificationsButton({ userId }) {
   const [state, setState] = useState("loading");
@@ -42,35 +50,27 @@ export default function NotificationsButton({ userId }) {
   if (state === "loading") return null;
 
   return (
-    <div className="notify-bar">
-      {state === "unsupported" && (
-        <span className="notify-text">
-          متصفحك لا يدعم الإشعارات. على الآيفون أضف التطبيق إلى الشاشة الرئيسية أولاً.
+    <div className="row-wrap">
+      <div className="row">
+        <span className={state === "subscribed" ? "row-icon is-on" : "row-icon"}>
+          <Bell size={20} />
         </span>
-      )}
-
-      {state === "denied" && (
-        <span className="notify-text">
-          الإشعارات محجوبة. فعّلها من إعدادات المتصفح لهذا الموقع.
-        </span>
-      )}
-
-      {state === "off" && (
-        <button className="primary-btn" disabled={busy} onClick={handleEnable}>
-          {busy ? "جاري التفعيل..." : "🔔 تفعيل إشعارات التذكير"}
-        </button>
-      )}
-
-      {state === "subscribed" && (
-        <>
-          <span className="notify-text">🔔 إشعارات التذكير مفعّلة على هذا الجهاز</span>
-          <button className="link-btn" disabled={busy} onClick={handleDisable}>
+        <div className="row-text">
+          <strong>إشعارات التذكير</strong>
+          <small>{STATE_TEXT[state]}</small>
+        </div>
+        {state === "off" && (
+          <button className="btn btn-primary btn-sm" disabled={busy} onClick={handleEnable}>
+            {busy ? "جاري التفعيل" : "تفعيل"}
+          </button>
+        )}
+        {state === "subscribed" && (
+          <button className="btn btn-quiet btn-sm" disabled={busy} onClick={handleDisable}>
             إيقاف
           </button>
-        </>
-      )}
-
-      {error && <span className="error-text">{error}</span>}
+        )}
+      </div>
+      {error && <p className="field-error">{error}</p>}
     </div>
   );
 }
