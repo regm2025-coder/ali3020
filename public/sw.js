@@ -79,7 +79,11 @@ self.addEventListener("notificationclick", (event) => {
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((windows) => {
         for (const client of windows) {
-          if ("focus" in client) return client.focus();
+          if ("focus" in client) {
+            // التطبيق مفتوح: نطلب منه الانتقال إلى الصفحة المعنية ثم نُظهره
+            client.postMessage({ type: "NAVIGATE", url });
+            return client.focus();
+          }
         }
         return self.clients.openWindow(url);
       })
