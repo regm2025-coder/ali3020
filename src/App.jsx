@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { ListChecks, CalendarDays, Users, User, Clock, X } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import { disablePush } from "./lib/push";
 import Tasks from "./components/Tasks";
 import Meetings from "./components/Meetings";
-import NotificationsButton from "./components/NotificationsButton";
-import { disablePush } from "./lib/push";
+import Settings from "./components/Settings";
+import { Empty } from "./components/ui";
 
 const ORG_ID = "00000000-0000-0000-0000-000000000001";
 const ADMIN_EMAIL = "admin@miad.invalid";
@@ -17,6 +19,19 @@ async function functionErrorMessage(error, fallback) {
     // نتجاهل ونعرض الرسالة الاحتياطية
   }
   return fallback;
+}
+
+function BrandMark({ size = 44 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true">
+      <rect width="512" height="512" rx="112" fill="#0E3B36" />
+      <rect x="132" y="146" width="248" height="236" rx="40" fill="#FFFFFF" />
+      <path d="M132 186a40 40 0 0 1 40-40h168a40 40 0 0 1 40 40v38H132z" fill="#E0A02E" />
+      <rect x="188" y="114" width="28" height="64" rx="14" fill="#FFFFFF" stroke="#0E3B36" strokeWidth="8" />
+      <rect x="296" y="114" width="28" height="64" rx="14" fill="#FFFFFF" stroke="#0E3B36" strokeWidth="8" />
+      <path d="M200 304l40 40 74-84" fill="none" stroke="#0E3B36" strokeWidth="30" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 export default function App() {
@@ -203,7 +218,7 @@ export default function App() {
       );
       setPendingMessage(
         status === "approved"
-          ? "تمت الموافقة على العضو بنجاح."
+          ? "تمت الموافقة على العضو."
           : "تم رفض طلب العضوية."
       );
     } catch (err) {
@@ -213,107 +228,139 @@ export default function App() {
     }
   }
 
+  // ---------- شاشات الحالة ----------
+
   if (!isSupabaseConfigured) {
     return (
-      <div className="centered-screen">
-        <p>⚠️ إعدادات Supabase غير مكتملة. تحقق من ملف .env</p>
+      <div className="state-screen">
+        <p>إعدادات Supabase غير مكتملة. تحقق من ملف .env</p>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="centered-screen">
-        <p>جاري التحميل...</p>
+      <div className="state-screen">
+        <BrandMark size={64} />
+        <p>جاري التحميل</p>
       </div>
     );
   }
 
+  // ---------- شاشة الدخول والتسجيل ----------
+
   if (!session) {
     return (
-      <div className="auth-wrapper">
-        <div className="auth-card">
+      <div className="auth">
+        <div className="auth-hero">
+          <BrandMark size={72} />
           <h1>مِيعاد</h1>
-          <p className="subtitle">إدارة الاجتماعات والمهام</p>
+          <p>اجتماعاتك ومهامك وتذكيراتها في مكان واحد</p>
+        </div>
 
-          <div className="tabs">
+        <div className="auth-sheet">
+          <div className="segmented" role="tablist">
             <button
-              className={authView === "login" ? "tab active" : "tab"}
+              role="tab"
+              aria-selected={authView === "login"}
+              className={authView === "login" ? "is-active" : ""}
               onClick={() => { setAuthView("login"); setAuthError(""); }}
             >
               تسجيل الدخول
             </button>
             <button
-              className={authView === "register" ? "tab active" : "tab"}
+              role="tab"
+              aria-selected={authView === "register"}
+              className={authView === "register" ? "is-active" : ""}
               onClick={() => { setAuthView("register"); setAuthError(""); }}
             >
-              تسجيل عضو جديد
+              عضو جديد
             </button>
           </div>
 
           {authView === "login" && (
             <>
-              <div className="tabs secondary">
+              <div className="segmented is-small" role="tablist">
                 <button
-                  className={loginMode === "employee" ? "tab active" : "tab"}
+                  role="tab"
+                  aria-selected={loginMode === "employee"}
+                  className={loginMode === "employee" ? "is-active" : ""}
                   onClick={() => setLoginMode("employee")}
                 >
-                  دخول موظف
+                  موظف
                 </button>
                 <button
-                  className={loginMode === "admin" ? "tab active" : "tab"}
+                  role="tab"
+                  aria-selected={loginMode === "admin"}
+                  className={loginMode === "admin" ? "is-active" : ""}
                   onClick={() => setLoginMode("admin")}
                 >
-                  دخول مدير
+                  مدير
                 </button>
               </div>
 
-              <form onSubmit={handleLogin} className="auth-form">
+              <form onSubmit={handleLogin} className="form">
                 {loginMode === "employee" && (
+                  <label className="field">
+                    <span>اسم المستخدم</span>
+                    <input
+                      type="text"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      required
+                    />
+                  </label>
+                )}
+                <label className="field">
+                  <span>كلمة المرور</span>
                   <input
-                    type="text"
-                    placeholder="اسم المستخدم"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                   />
-                )}
-                <input
-                  type="password"
-                  placeholder="كلمة المرور"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                {authError && <p className="error-text">{authError}</p>}
-                <button type="submit" disabled={authLoading}>
-                  {authLoading ? "جاري الدخول..." : "دخول"}
+                </label>
+                {authError && <p className="field-error">{authError}</p>}
+                <button type="submit" className="btn btn-primary btn-block" disabled={authLoading}>
+                  {authLoading ? "جاري الدخول" : "دخول"}
                 </button>
               </form>
             </>
           )}
 
           {authView === "register" && (
-            <form onSubmit={handleRegister} className="auth-form">
-              <input
-                type="text"
-                placeholder="اختر اسم مستخدم"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                minLength={3}
-              />
-              <input
-                type="password"
-                placeholder="اختر كلمة مرور"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-              {authError && <p className="error-text">{authError}</p>}
-              <button type="submit" disabled={authLoading}>
-                {authLoading ? "جاري التسجيل..." : "تسجيل"}
+            <form onSubmit={handleRegister} className="form">
+              <label className="field">
+                <span>اسم المستخدم</span>
+                <input
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  minLength={3}
+                />
+                <small>أحرف إنجليزية صغيرة وأرقام، من 3 أحرف.</small>
+              </label>
+              <label className="field">
+                <span>كلمة المرور</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+                <small>6 أحرف على الأقل.</small>
+              </label>
+              {authError && <p className="field-error">{authError}</p>}
+              <button type="submit" className="btn btn-primary btn-block" disabled={authLoading}>
+                {authLoading ? "جاري الإرسال" : "إرسال طلب العضوية"}
               </button>
             </form>
           )}
@@ -324,153 +371,145 @@ export default function App() {
 
   if (!membership) {
     return (
-      <div className="centered-screen">
-        <p>لا يوجد لديك عضوية مرتبطة بالنظام.</p>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
+      <div className="state-screen">
+        <h2>لا توجد عضوية مرتبطة بحسابك</h2>
+        <p>تواصل مع المدير ليضيفك إلى النظام.</p>
+        <button className="btn btn-primary" onClick={handleLogout}>تسجيل الخروج</button>
       </div>
     );
   }
 
   if (membership.status === "pending") {
     return (
-      <div className="centered-screen">
-        <h2>⏳ حسابك قيد المراجعة</h2>
-        <p>بانتظار موافقة المدير على طلب عضويتك.</p>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
+      <div className="state-screen">
+        <span className="state-icon"><Clock size={30} /></span>
+        <h2>طلبك قيد المراجعة</h2>
+        <p>سيصلك الوصول بمجرد موافقة المدير على عضويتك.</p>
+        <button className="btn btn-primary" onClick={handleLogout}>تسجيل الخروج</button>
       </div>
     );
   }
 
   if (membership.status === "rejected") {
     return (
-      <div className="centered-screen">
-        <h2>❌ تم رفض طلب عضويتك</h2>
-        <p>تواصل مع المدير لمزيد من المعلومات.</p>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
+      <div className="state-screen">
+        <span className="state-icon is-danger"><X size={30} /></span>
+        <h2>لم تتم الموافقة على طلبك</h2>
+        <p>تواصل مع المدير لمعرفة السبب.</p>
+        <button className="btn btn-primary" onClick={handleLogout}>تسجيل الخروج</button>
       </div>
     );
   }
 
-  if (membership.role === "manager") {
-    return (
-      <div className="dashboard">
-        <header className="dashboard-header">
-          <h1>مِيعاد — لوحة المدير</h1>
-          <button onClick={handleLogout}>تسجيل الخروج</button>
-        </header>
+  // ---------- التطبيق (مدير أو موظف) ----------
 
-        <NotificationsButton userId={session.user.id} />
+  const isManager = membership.role === "manager";
 
-        <nav className="tabs main-tabs">
-          <button
-            className={tab === "tasks" ? "tab active" : "tab"}
-            onClick={() => setTab("tasks")}
-          >
-            المهام
-          </button>
-          <button
-            className={tab === "meetings" ? "tab active" : "tab"}
-            onClick={() => setTab("meetings")}
-          >
-            الاجتماعات
-          </button>
-          <button
-            className={tab === "members" ? "tab active" : "tab"}
-            onClick={() => setTab("members")}
-          >
-            الأعضاء
-            {pendingMembers.length > 0 && (
-              <span className="count-dot">{pendingMembers.length}</span>
-            )}
-          </button>
-        </nav>
+  const tabs = [
+    { id: "tasks", label: isManager ? "المهام" : "مهامي", Icon: ListChecks },
+    { id: "meetings", label: "الاجتماعات", Icon: CalendarDays },
+    ...(isManager
+      ? [{ id: "members", label: "الأعضاء", Icon: Users, badge: pendingMembers.length }]
+      : []),
+    { id: "account", label: "حسابي", Icon: User },
+  ];
 
+  const titles = {
+    tasks: isManager ? "المهام" : "مهامي",
+    meetings: "الاجتماعات",
+    members: "طلبات العضوية",
+    account: "حسابي",
+  };
+
+  const today = new Date().toLocaleDateString("ar", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  return (
+    <div className="app-shell">
+      <header className="app-header">
+        <div>
+          <h1>{titles[tab]}</h1>
+          <p>{today}</p>
+        </div>
+        <BrandMark size={40} />
+      </header>
+
+      <main>
         {tab === "tasks" && (
-          <Tasks session={session} orgId={ORG_ID} isManager />
+          <Tasks session={session} orgId={ORG_ID} isManager={isManager} />
         )}
         {tab === "meetings" && (
-          <Meetings session={session} orgId={ORG_ID} isManager />
+          <Meetings session={session} orgId={ORG_ID} isManager={isManager} />
         )}
 
-        {tab === "members" && (
-        <section className="panel">
-          <h2>طلبات العضوية المعلقة ({pendingMembers.length})</h2>
+        {tab === "members" && isManager && (
+          <section className="page">
+            {pendingMessage && <p className="notice notice-ok">{pendingMessage}</p>}
 
-          {pendingMessage && <p className="info-text">{pendingMessage}</p>}
-
-          {pendingMembers.length === 0 ? (
-            <p>لا توجد طلبات معلقة حالياً.</p>
-          ) : (
-            <table className="members-table">
-              <thead>
-                <tr>
-                  <th>اسم المستخدم</th>
-                  <th>تاريخ الطلب</th>
-                  <th>الإجراء</th>
-                </tr>
-              </thead>
-              <tbody>
+            {pendingMembers.length === 0 ? (
+              <Empty
+                icon={Users}
+                title="لا توجد طلبات معلقة"
+                hint="سيظهر هنا كل عضو جديد ينتظر موافقتك."
+              />
+            ) : (
+              <ul className="list">
                 {pendingMembers.map((m) => (
-                  <tr key={m.user_id}>
-                    <td>{m.username}</td>
-                    <td>{new Date(m.created_at).toLocaleDateString("ar")}</td>
-                    <td>
+                  <li key={m.user_id} className="member">
+                    <span className="avatar">{m.username.charAt(0).toUpperCase()}</span>
+                    <div className="member-info">
+                      <strong>{m.username}</strong>
+                      <small>{new Date(m.created_at).toLocaleDateString("ar", { day: "numeric", month: "long" })}</small>
+                    </div>
+                    <div className="member-actions">
                       <button
-                        className="approve-btn"
+                        className="btn btn-primary btn-sm"
                         disabled={pendingAction === m.user_id}
                         onClick={() => updateMemberApproval(m.user_id, "approved")}
                       >
                         موافقة
                       </button>
                       <button
-                        className="reject-btn"
+                        className="btn btn-quiet btn-sm"
                         disabled={pendingAction === m.user_id}
                         onClick={() => updateMemberApproval(m.user_id, "rejected")}
                       >
                         رفض
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+              </ul>
+            )}
+          </section>
         )}
-      </div>
-    );
-  }
 
-  return (
-    <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>مِيعاد — مرحباً {membership.username}</h1>
-        <button onClick={handleLogout}>تسجيل الخروج</button>
-      </header>
+        {tab === "account" && (
+          <Settings session={session} membership={membership} onLogout={handleLogout} />
+        )}
+      </main>
 
-      <NotificationsButton userId={session.user.id} />
-
-      <nav className="tabs main-tabs">
-        <button
-          className={tab === "tasks" ? "tab active" : "tab"}
-          onClick={() => setTab("tasks")}
-        >
-          مهامي
-        </button>
-        <button
-          className={tab === "meetings" ? "tab active" : "tab"}
-          onClick={() => setTab("meetings")}
-        >
-          الاجتماعات
-        </button>
+      <nav className="bottom-nav" aria-label="التنقل الرئيسي">
+        <div className="bottom-nav-inner">
+          {tabs.map(({ id, label, Icon, badge }) => (
+            <button
+              key={id}
+              className={tab === id ? "nav-item is-active" : "nav-item"}
+              aria-current={tab === id ? "page" : undefined}
+              onClick={() => setTab(id)}
+            >
+              <span className="nav-pill">
+                <Icon size={22} />
+                {badge > 0 && <span className="nav-badge">{badge.toLocaleString("ar")}</span>}
+              </span>
+              <span className="nav-label">{label}</span>
+            </button>
+          ))}
+        </div>
       </nav>
-
-      {tab === "tasks" && (
-        <Tasks session={session} orgId={ORG_ID} isManager={false} />
-      )}
-      {tab === "meetings" && (
-        <Meetings session={session} orgId={ORG_ID} isManager={false} />
-      )}
     </div>
   );
 }
