@@ -50,7 +50,23 @@ export default function App() {
   const [pendingAction, setPendingAction] = useState("");
   const [pendingMessage, setPendingMessage] = useState("");
 
-  const [tab, setTab] = useState("tasks");
+  const [tab, setTab] = useState(() => {
+    // الإشعار يفتح التطبيق على الصفحة المعنية: /?tab=meetings
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    return wanted === "meetings" ? "meetings" : "tasks";
+  });
+
+  // التطبيق مفتوح وضُغط على إشعار: ينتقل إلى تبويب المهام أو الاجتماعات
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event) => {
+      if (event.data?.type !== "NAVIGATE") return;
+      const wanted = new URL(event.data.url, window.location.origin).searchParams.get("tab");
+      setTab(wanted === "meetings" ? "meetings" : "tasks");
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
 
   const restoreMembership = useCallback(async (user) => {
     if (!user) {
