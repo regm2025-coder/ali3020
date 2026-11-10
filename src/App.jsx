@@ -532,7 +532,7 @@ export default function App() {
         )}
 
         {tab === "account" && (
-          <Settings session={session} membership={membership} onLogout={handleLogout} />
+          <Settings session={session} membership={membership} orgId={ORG_ID} onLogout={handleLogout} />
         )}
       </main>
 
