@@ -1380,3 +1380,12 @@ p {
   font-size: 14px;
   padding: 0 4px;
 }
+
+/* ---------- اسم المؤسسة في الرأس ---------- */
+
+.app-header .org-name {
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold-ink);
+}

@@ -131,6 +131,21 @@ export default function App() {
 
   const orgId = membership?.organization_id;
 
+  // اسم المؤسسة ورمز الانضمام: يظهر الاسم في رأس التطبيق لكل الأعضاء
+  const [org, setOrg] = useState(null);
+  useEffect(() => {
+    if (!orgId || membership?.status !== "approved") {
+      setOrg(null);
+      return;
+    }
+    supabase
+      .from("organizations")
+      .select("name, join_code")
+      .eq("id", orgId)
+      .maybeSingle()
+      .then(({ data }) => setOrg(data || null));
+  }, [orgId, membership?.status]);
+
   const loadPendingMembers = useCallback(async () => {
     if (!orgId) return;
     const { data, error } = await supabase
@@ -595,6 +610,7 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
+          {org?.name && <p className="org-name">{org.name}</p>}
           <h1>{titles[tab]}</h1>
           <p>{today}</p>
         </div>
@@ -661,7 +677,14 @@ export default function App() {
         )}
 
         {tab === "account" && (
-          <Settings session={session} membership={membership} orgId={orgId} onLogout={handleLogout} />
+          <Settings
+            session={session}
+            membership={membership}
+            orgId={orgId}
+            org={org}
+            onOrgChange={setOrg}
+            onLogout={handleLogout}
+          />
         )}
       </main>
 
