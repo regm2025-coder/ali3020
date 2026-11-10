@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Clock, CalendarDays, Trash2, Check, X } from "lucide-react";
+import { Plus, Clock, CalendarDays, Trash2, Check, X, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { formatDateTime, localToISO } from "../lib/format";
+import { formatDateTime, localToISO, isoToLocal } from "../lib/format";
 import { Sheet, Empty, ConfirmDialog } from "./ui";
 
 const EMPTY_FORM = {
   title: "",
   description: "",
   meeting_date: "",
+  minutes: "",
   remind: true,
 };
 
@@ -46,6 +47,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
   const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState("");
   const [toDelete, setToDelete] = useState(null);
   const [message, setMessage] = useState({ type: "", text: "" });
@@ -55,7 +57,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from("meetings")
-      .select("id, title, description, meeting_date")
+      .select("id, title, description, meeting_date, minutes")
       .eq("organization_id", orgId)
       .order("meeting_date", { ascending: true });
 
@@ -137,72 +139,114 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
 
   function closeForm() {
     setShowForm(false);
+    setEditing(null);
   }
 
-  async function handleCreate(event) {
+  function openNew() {
+    setMessage({ type: "", text: "" });
+    setForm(EMPTY_FORM);
+    setEditing(null);
+    setShowForm(true);
+  }
+
+  function openEdit(m) {
+    setMessage({ type: "", text: "" });
+    setForm({
+      title: m.title,
+      description: m.description || "",
+      meeting_date: isoToLocal(m.meeting_date),
+      minutes: m.minutes || "",
+      remind: true,
+    });
+    setEditing(m);
+    setShowForm(true);
+  }
+
+  // تذكير جميع الأعضاء المعتمدين قبل الاجتماع بساعة (إن كان الوقت لم يفت)
+  async function createReminders(meetingId, title, dateISO) {
+    const remindAt = new Date(new Date(dateISO).getTime() - REMIND_BEFORE_MINUTES * 60 * 1000);
+    if (remindAt <= new Date()) return "";
+
+    const { data: people } = await supabase
+      .from("memberships")
+      .select("user_id")
+      .eq("organization_id", orgId)
+      .eq("status", "approved");
+    if (!people?.length) return "";
+
+    const { error } = await supabase.from("reminders").insert(
+      people.map((p) => ({
+        organization_id: orgId,
+        user_id: p.user_id,
+        meeting_id: meetingId,
+        title: `اجتماع قريب: ${title}`,
+        body: `يبدأ الاجتماع ${formatDateTime(dateISO)}`,
+        remind_at: remindAt.toISOString(),
+        channel: "push",
+        created_by: userId,
+      }))
+    );
+    return error ? " لكن تعذر إنشاء التذكيرات." : " وسيصل تذكير للجميع قبله بساعة.";
+  }
+
+  async function handleSave(event) {
     event.preventDefault();
     setMessage({ type: "", text: "" });
     setBusy("create");
 
     try {
       const dateISO = localToISO(form.meeting_date);
-
-      const { data: created, error } = await supabase
-        .from("meetings")
-        .insert({
-          organization_id: orgId,
-          title: form.title.trim(),
-          description: form.description.trim() || null,
-          meeting_date: dateISO,
-          created_by: userId,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-
+      const title = form.title.trim();
       let reminderNote = "";
-      const remindAt = new Date(
-        new Date(dateISO).getTime() - REMIND_BEFORE_MINUTES * 60 * 1000
-      );
 
-      // تذكير جميع الأعضاء المعتمدين قبل الاجتماع (إن كان الوقت لم يفت)
-      if (form.remind && remindAt > new Date()) {
-        const { data: people } = await supabase
-          .from("memberships")
-          .select("user_id")
-          .eq("organization_id", orgId)
-          .eq("status", "approved");
+      if (editing) {
+        const { error } = await supabase
+          .from("meetings")
+          .update({
+            title,
+            description: form.description.trim() || null,
+            meeting_date: dateISO,
+            minutes: form.minutes.trim() || null,
+          })
+          .eq("id", editing.id);
+        if (error) throw error;
 
-        if (people?.length) {
-          const { error: reminderError } = await supabase
-            .from("reminders")
-            .insert(
-              people.map((p) => ({
-                organization_id: orgId,
-                user_id: p.user_id,
-                meeting_id: created.id,
-                title: `اجتماع قريب: ${form.title.trim()}`,
-                body: `يبدأ الاجتماع ${formatDateTime(dateISO)}`,
-                remind_at: remindAt.toISOString(),
-                channel: "push",
-                created_by: userId,
-              }))
-            );
-          reminderNote = reminderError
-            ? " لكن تعذر إنشاء التذكيرات."
-            : " وسيصل تذكير للجميع قبله بساعة.";
+        // تغيّر الموعد أو العنوان: نستبدل التذكيرات التي لم تُرسل بعد
+        const changed =
+          new Date(dateISO).getTime() !== new Date(editing.meeting_date).getTime() ||
+          title !== editing.title;
+        if (changed) {
+          await supabase.from("reminders").delete().eq("meeting_id", editing.id).is("sent_at", null);
+          if (form.remind) reminderNote = await createReminders(editing.id, title, dateISO);
         }
+      } else {
+        const { data: created, error } = await supabase
+          .from("meetings")
+          .insert({
+            organization_id: orgId,
+            title,
+            description: form.description.trim() || null,
+            meeting_date: dateISO,
+            created_by: userId,
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+
+        if (form.remind) reminderNote = await createReminders(created.id, title, dateISO);
       }
 
+      const wasEditing = Boolean(editing);
       setForm(EMPTY_FORM);
       setShowForm(false);
+      setEditing(null);
       setMessage({
         type: reminderNote.includes("تعذر") ? "error" : "success",
-        text: `تمت إضافة الاجتماع${reminderNote}`,
+        text: `${wasEditing ? "تم تحديث الاجتماع" : "تمت إضافة الاجتماع"}${reminderNote}`,
       });
       await load();
     } catch {
-      setMessage({ type: "error", text: "تعذر إضافة الاجتماع. تحقق من البيانات وحاول مرة أخرى." });
+      setMessage({ type: "error", text: "تعذر حفظ الاجتماع. تحقق من البيانات وحاول مرة أخرى." });
     } finally {
       setBusy("");
     }
@@ -297,6 +341,14 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
     );
   };
 
+  const renderMinutes = (m) =>
+    m.minutes ? (
+      <details className="minutes">
+        <summary>محضر الاجتماع</summary>
+        <p>{m.minutes}</p>
+      </details>
+    ) : null;
+
   const renderItem = (m, isPast) => (
     <li key={m.id} className={isPast ? "meeting is-past" : "meeting"}>
       <div className="date-block" aria-hidden="true">
@@ -313,7 +365,17 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
         </div>
         {m.description && <p className="task-desc">{m.description}</p>}
         {!isPast && renderRsvp(m)}
+        {renderMinutes(m)}
       </div>
+      {isManager && (
+        <button
+          className="icon-btn"
+          aria-label={`تعديل الاجتماع ${m.title}`}
+          onClick={() => openEdit(m)}
+        >
+          <Pencil size={18} />
+        </button>
+      )}
       {isManager && (
         <button
           className="icon-btn is-danger"
@@ -374,6 +436,16 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
           </p>
           {next.description && <p className="next-desc">{next.description}</p>}
           {renderRsvp(next)}
+          {renderMinutes(next)}
+          {isManager && (
+            <button
+              className="next-delete next-edit"
+              aria-label={`تعديل الاجتماع ${next.title}`}
+              onClick={() => openEdit(next)}
+            >
+              <Pencil size={18} />
+            </button>
+          )}
           {isManager && (
             <button
               className="next-delete"
@@ -402,7 +474,7 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
       )}
 
       {isManager && (
-        <button className="fab" onClick={() => setShowForm(true)} aria-label="اجتماع جديد">
+        <button className="fab" onClick={openNew} aria-label="اجتماع جديد">
           <Plus size={26} />
         </button>
       )}
@@ -418,8 +490,8 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
       )}
 
       {isManager && showForm && (
-        <Sheet title="اجتماع جديد" onClose={closeForm}>
-          <form className="form" onSubmit={handleCreate}>
+        <Sheet title={editing ? "تعديل الاجتماع" : "اجتماع جديد"} onClose={closeForm}>
+          <form className="form" onSubmit={handleSave}>
             <label className="field">
               <span>عنوان الاجتماع</span>
               <input
@@ -446,19 +518,34 @@ export default function Meetings({ session, orgId, isManager, intent, onIntentDo
                 required
               />
             </label>
+            {editing && (
+              <label className="field">
+                <span>محضر الاجتماع (اختياري)</span>
+                <textarea
+                  rows={5}
+                  value={form.minutes}
+                  onChange={(e) => setField("minutes", e.target.value)}
+                  placeholder="القرارات والملاحظات وما تم الاتفاق عليه"
+                />
+              </label>
+            )}
             <label className="check">
               <input
                 type="checkbox"
                 checked={form.remind}
                 onChange={(e) => setField("remind", e.target.checked)}
               />
-              <span>تذكير جميع الأعضاء قبل الاجتماع بساعة</span>
+              <span>
+                {editing
+                  ? "إعادة جدولة تذكير الأعضاء قبل الاجتماع بساعة"
+                  : "تذكير جميع الأعضاء قبل الاجتماع بساعة"}
+              </span>
             </label>
             {message.type === "error" && message.text && (
               <p className="field-error">{message.text}</p>
             )}
             <button type="submit" className="btn btn-primary btn-block" disabled={busy === "create"}>
-              {busy === "create" ? "جاري الحفظ" : "حفظ الاجتماع"}
+              {busy === "create" ? "جاري الحفظ" : editing ? "حفظ التعديلات" : "حفظ الاجتماع"}
             </button>
           </form>
         </Sheet>

@@ -1,6 +1,18 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Download, Smartphone, Check, LogOut } from "lucide-react";
+import { RefreshCw, Download, Smartphone, Check, LogOut, Building2, History } from "lucide-react";
 import NotificationsButton from "./NotificationsButton";
+import { Sheet } from "./ui";
+import { supabase } from "../lib/supabase";
+import { formatDateTime } from "../lib/format";
+
+const VERBS = { create: "أنشأ", update: "عدّل", delete: "حذف" };
+const NOUNS = { meeting: "اجتماع", task: "مهمة", member: "عضوية", organization: "اسم المؤسسة" };
+
+function describe(entry) {
+  const who = entry.actor_name || "مستخدم";
+  const what = NOUNS[entry.entity] || "عنصر";
+  return `${who} ${VERBS[entry.action] || ""} ${what} «${entry.entity_title || "—"}»`;
+}
 
 const isStandalone = () =>
   window.matchMedia("(display-mode: standalone)").matches ||
@@ -27,10 +39,59 @@ async function refreshApp() {
   }
 }
 
-export default function Settings({ session, membership, onLogout }) {
+export default function Settings({ session, membership, orgId, onLogout }) {
   const [updating, setUpdating] = useState(false);
   const [installReady, setInstallReady] = useState(Boolean(window.__miadInstallPrompt));
   const [installed, setInstalled] = useState(isStandalone());
+
+  const isManager = membership.role === "manager";
+  const [orgName, setOrgName] = useState("");
+  const [nameDraft, setNameDraft] = useState("");
+  const [showName, setShowName] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [log, setLog] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", orgId)
+      .maybeSingle()
+      .then(({ data }) => setOrgName(data?.name || ""));
+  }, [orgId]);
+
+  async function saveName(event) {
+    event.preventDefault();
+    const name = nameDraft.trim();
+    if (!name) return;
+    setSaving(true);
+    setError("");
+    const { data, error: err } = await supabase
+      .from("organizations")
+      .update({ name })
+      .eq("id", orgId)
+      .select("name");
+    setSaving(false);
+    if (err || !data?.length) {
+      setError("تعذر حفظ الاسم. حاول مرة أخرى.");
+      return;
+    }
+    setOrgName(data[0].name);
+    setShowName(false);
+  }
+
+  async function openLog() {
+    setShowLog(true);
+    setLog(null);
+    const { data } = await supabase
+      .from("activity_log")
+      .select("id, actor_name, action, entity, entity_title, details, created_at")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setLog(data || []);
+  }
 
   useEffect(() => {
     const sync = () => {
@@ -70,7 +131,7 @@ export default function Settings({ session, membership, onLogout }) {
         <span className="avatar">{name.charAt(0).toUpperCase()}</span>
         <div>
           <strong>{name}</strong>
-          <small>{roleLabel}</small>
+          <small>{orgName ? `${roleLabel} · ${orgName}` : roleLabel}</small>
         </div>
       </div>
 
@@ -111,10 +172,90 @@ export default function Settings({ session, membership, onLogout }) {
         <NotificationsButton userId={session.user.id} />
       </div>
 
+      {isManager && (
+        <div className="group">
+          <div className="row-wrap">
+            <div className="row">
+              <span className="row-icon">
+                <Building2 size={20} />
+              </span>
+              <div className="row-text">
+                <strong>اسم المؤسسة</strong>
+                <small>{orgName || "—"}</small>
+              </div>
+              <button
+                className="btn btn-quiet btn-sm"
+                onClick={() => {
+                  setNameDraft(orgName);
+                  setError("");
+                  setShowName(true);
+                }}
+              >
+                تعديل
+              </button>
+            </div>
+          </div>
+          <div className="row-wrap">
+            <div className="row">
+              <span className="row-icon">
+                <History size={20} />
+              </span>
+              <div className="row-text">
+                <strong>سجل النشاط</strong>
+                <small>من أنشأ أو عدّل أو حذف.</small>
+              </div>
+              <button className="btn btn-quiet btn-sm" onClick={openLog}>
+                عرض
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button className="btn btn-danger btn-block" onClick={onLogout}>
         <LogOut size={18} />
         تسجيل الخروج
       </button>
+
+      {showName && (
+        <Sheet title="اسم المؤسسة" onClose={() => setShowName(false)}>
+          <form className="form" onSubmit={saveName}>
+            <label className="field">
+              <span>الاسم</span>
+              <input
+                type="text"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                required
+              />
+            </label>
+            {error && <p className="field-error">{error}</p>}
+            <button type="submit" className="btn btn-primary btn-block" disabled={saving}>
+              {saving ? "جاري الحفظ" : "حفظ الاسم"}
+            </button>
+          </form>
+        </Sheet>
+      )}
+
+      {showLog && (
+        <Sheet title="سجل النشاط" onClose={() => setShowLog(false)}>
+          {log === null ? (
+            <p className="log-empty">جاري التحميل</p>
+          ) : log.length === 0 ? (
+            <p className="log-empty">لا توجد عمليات مسجّلة بعد. ستظهر هنا كل عملية إنشاء أو تعديل أو حذف.</p>
+          ) : (
+            <ul className="log-list">
+              {log.map((e) => (
+                <li key={e.id} data-action={e.action}>
+                  <strong>{describe(e)}</strong>
+                  {e.details && <span>{e.details}</span>}
+                  <time>{formatDateTime(e.created_at)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Sheet>
+      )}
     </section>
   );
 }
