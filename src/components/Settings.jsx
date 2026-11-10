@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Download, Smartphone, Check, LogOut, Building2, History } from "lucide-react";
+import { RefreshCw, Download, Smartphone, Check, LogOut, Building2, History, KeyRound, Copy } from "lucide-react";
 import NotificationsButton from "./NotificationsButton";
 import { Sheet } from "./ui";
 import { supabase } from "../lib/supabase";
@@ -46,6 +46,8 @@ export default function Settings({ session, membership, orgId, onLogout }) {
 
   const isManager = membership.role === "manager";
   const [orgName, setOrgName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [copied, setCopied] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [showName, setShowName] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -56,10 +58,13 @@ export default function Settings({ session, membership, orgId, onLogout }) {
   useEffect(() => {
     supabase
       .from("organizations")
-      .select("name")
+      .select("name, join_code")
       .eq("id", orgId)
       .maybeSingle()
-      .then(({ data }) => setOrgName(data?.name || ""));
+      .then(({ data }) => {
+        setOrgName(data?.name || "");
+        setJoinCode(data?.join_code || "");
+      });
   }, [orgId]);
 
   async function saveName(event) {
@@ -80,6 +85,16 @@ export default function Settings({ session, membership, orgId, onLogout }) {
     }
     setOrgName(data[0].name);
     setShowName(false);
+  }
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // المتصفح منع النسخ: الرمز ظاهر ويمكن نسخه يدوياً
+    }
   }
 
   async function openLog() {
@@ -117,7 +132,7 @@ export default function Settings({ session, membership, orgId, onLogout }) {
     setInstalled(isStandalone());
   }
 
-  const name = membership.username || "—";
+  const name = membership.display_name || membership.username || "—";
   const roleLabel = membership.role === "manager" ? "مدير" : "موظف";
 
   let installText = "من قائمة المتصفح اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».";
@@ -192,6 +207,23 @@ export default function Settings({ session, membership, orgId, onLogout }) {
                 }}
               >
                 تعديل
+              </button>
+            </div>
+          </div>
+          <div className="row-wrap">
+            <div className="row">
+              <span className="row-icon">
+                <KeyRound size={20} />
+              </span>
+              <div className="row-text">
+                <strong>رمز الانضمام</strong>
+                <small>
+                  أعطه لأعضائك ليطلبوا الانضمام: <span className="join-code">{joinCode || "—"}</span>
+                </small>
+              </div>
+              <button className="btn btn-quiet btn-sm" onClick={copyCode} disabled={!joinCode}>
+                <Copy size={16} />
+                {copied ? "تم النسخ" : "نسخ"}
               </button>
             </div>
           </div>
