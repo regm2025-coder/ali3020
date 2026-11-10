@@ -7,7 +7,6 @@ import Meetings from "./components/Meetings";
 import Settings from "./components/Settings";
 import { Empty } from "./components/ui";
 
-const ORG_ID = "00000000-0000-0000-0000-000000000001";
 const ADMIN_EMAIL = "admin@miad.invalid";
 
 // supabase-js يرمي رسالة عامة عند أي رد غير 2xx؛ نقرأ رسالة الخادم الفعلية بدلاً منها
@@ -39,10 +38,13 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [membership, setMembership] = useState(null);
 
-  const [authView, setAuthView] = useState("login");
-  const [loginMode, setLoginMode] = useState("employee");
+  const [authView, setAuthView] = useState("login"); // login | join | create
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [orgName, setOrgName] = useState("");
+  const [managerName, setManagerName] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -87,10 +89,9 @@ export default function App() {
     }
     const { data, error } = await supabase
       .from("memberships")
-      .select("role, status, username")
+      .select("organization_id, role, status, username, display_name")
       .eq("user_id", user.id)
-      .eq("organization_id", ORG_ID)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       setMembership(null);
@@ -128,16 +129,19 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, [restoreMembership]);
 
+  const orgId = membership?.organization_id;
+
   const loadPendingMembers = useCallback(async () => {
+    if (!orgId) return;
     const { data, error } = await supabase
       .from("memberships")
       .select("user_id, username, created_at")
-      .eq("organization_id", ORG_ID)
+      .eq("organization_id", orgId)
       .eq("status", "pending")
       .order("created_at", { ascending: true });
 
     if (!error) setPendingMembers(data || []);
-  }, []);
+  }, [orgId]);
 
   useEffect(() => {
     if (membership?.status === "approved" && membership.role === "manager") {
@@ -152,35 +156,45 @@ export default function App() {
     }
   }, [session, membership]);
 
+  function switchAuthView(view) {
+    setAuthView(view);
+    setAuthError("");
+    setPassword("");
+    setConfirmPassword("");
+  }
+
+  // الدخول باسم المستخدم وكلمة المرور؛ المؤسسة تُستنتج من العضوية
+  async function signInWithUsername(name, pass) {
+    if (name.trim().toLowerCase() === "admin") {
+      // حساب المدير الأول القديم يدخل مباشرة ببريده الداخلي
+      const { error } = await supabase.auth.signInWithPassword({
+        email: ADMIN_EMAIL,
+        password: pass,
+      });
+      if (error) throw new Error("اسم المستخدم أو كلمة المرور غير صحيحة");
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke("username-auth", {
+      body: { username: name, password: pass },
+    });
+    if (error) {
+      throw new Error(await functionErrorMessage(error, "تعذر تسجيل الدخول"));
+    }
+    if (data?.error) throw new Error(data.error);
+
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  }
+
   async function handleLogin(event) {
     event.preventDefault();
     setAuthError("");
     setAuthLoading(true);
-
     try {
-      if (loginMode === "admin") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: ADMIN_EMAIL,
-          password,
-        });
-        if (error) throw new Error("كلمة المرور غير صحيحة");
-      } else {
-        const { data, error } = await supabase.functions.invoke(
-          "username-auth",
-          { body: { username, password } }
-        );
-        if (error) {
-          throw new Error(
-            await functionErrorMessage(error, "تعذر تسجيل الدخول")
-          );
-        }
-        if (data?.error) throw new Error(data.error);
-
-        await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        });
-      }
+      await signInWithUsername(username, password);
       setUsername("");
       setPassword("");
     } catch (err) {
@@ -190,29 +204,69 @@ export default function App() {
     }
   }
 
+  // طلب انضمام إلى مؤسسة موجودة برمز الانضمام
   async function handleRegister(event) {
     event.preventDefault();
     setAuthError("");
+    if (password !== confirmPassword) {
+      setAuthError("كلمتا المرور غير متطابقتين.");
+      return;
+    }
     setAuthLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "register-member",
-        { body: { username, password } }
-      );
+      const { data, error } = await supabase.functions.invoke("register-member", {
+        body: { username, password, join_code: joinCode },
+      });
       if (error) {
-        throw new Error(
-          await functionErrorMessage(error, "تعذر إتمام التسجيل")
-        );
+        throw new Error(await functionErrorMessage(error, "تعذر إتمام التسجيل"));
       }
       if (data?.error) throw new Error(data.error);
 
       setAuthView("login");
-      setLoginMode("employee");
       setPassword("");
-      setAuthError("تم التسجيل بنجاح. بانتظار موافقة المدير.");
+      setConfirmPassword("");
+      setJoinCode("");
+      setAuthError("تم إرسال طلبك. بانتظار موافقة مدير المؤسسة.");
     } catch (err) {
       setAuthError(err.message || "تعذر إتمام التسجيل");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  // إنشاء مؤسسة جديدة: ينشئ حساب المدير الرئيسي ثم يدخله مباشرة
+  async function handleCreateOrg(event) {
+    event.preventDefault();
+    setAuthError("");
+    if (password !== confirmPassword) {
+      setAuthError("كلمتا المرور غير متطابقتين.");
+      return;
+    }
+    setAuthLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("create-organization", {
+        body: {
+          org_name: orgName,
+          manager_name: managerName,
+          username,
+          password,
+        },
+      });
+      if (error) {
+        throw new Error(await functionErrorMessage(error, "تعذر إنشاء المؤسسة"));
+      }
+      if (data?.error) throw new Error(data.error);
+
+      await signInWithUsername(username, password);
+      setUsername("");
+      setPassword("");
+      setConfirmPassword("");
+      setOrgName("");
+      setManagerName("");
+    } catch (err) {
+      setAuthError(err.message || "تعذر إنشاء المؤسسة");
     } finally {
       setAuthLoading(false);
     }
@@ -295,79 +349,73 @@ export default function App() {
 
         <div className="auth-sheet">
           <div className="segmented" role="tablist">
-            <button
-              role="tab"
-              aria-selected={authView === "login"}
-              className={authView === "login" ? "is-active" : ""}
-              onClick={() => { setAuthView("login"); setAuthError(""); }}
-            >
-              تسجيل الدخول
-            </button>
-            <button
-              role="tab"
-              aria-selected={authView === "register"}
-              className={authView === "register" ? "is-active" : ""}
-              onClick={() => { setAuthView("register"); setAuthError(""); }}
-            >
-              عضو جديد
-            </button>
+            {[
+              ["login", "دخول"],
+              ["join", "انضمام"],
+              ["create", "مؤسسة جديدة"],
+            ].map(([view, label]) => (
+              <button
+                key={view}
+                role="tab"
+                aria-selected={authView === view}
+                className={authView === view ? "is-active" : ""}
+                onClick={() => switchAuthView(view)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           {authView === "login" && (
-            <>
-              <div className="segmented is-small" role="tablist">
-                <button
-                  role="tab"
-                  aria-selected={loginMode === "employee"}
-                  className={loginMode === "employee" ? "is-active" : ""}
-                  onClick={() => setLoginMode("employee")}
-                >
-                  موظف
-                </button>
-                <button
-                  role="tab"
-                  aria-selected={loginMode === "admin"}
-                  className={loginMode === "admin" ? "is-active" : ""}
-                  onClick={() => setLoginMode("admin")}
-                >
-                  مدير
-                </button>
-              </div>
-
-              <form onSubmit={handleLogin} className="form">
-                {loginMode === "employee" && (
-                  <label className="field">
-                    <span>اسم المستخدم</span>
-                    <input
-                      type="text"
-                      autoComplete="username"
-                      autoCapitalize="none"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                    />
-                  </label>
-                )}
-                <label className="field">
-                  <span>كلمة المرور</span>
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </label>
-                {authError && <p className="field-error">{authError}</p>}
-                <button type="submit" className="btn btn-primary btn-block" disabled={authLoading}>
-                  {authLoading ? "جاري الدخول" : "دخول"}
-                </button>
-              </form>
-            </>
+            <form onSubmit={handleLogin} className="form">
+              <p className="auth-note">للمديرين والأعضاء المسجّلين.</p>
+              <label className="field">
+                <span>اسم المستخدم</span>
+                <input
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>كلمة المرور</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </label>
+              {authError && (
+                <p className={authError.startsWith("تم") ? "notice notice-ok" : "field-error"}>
+                  {authError}
+                </p>
+              )}
+              <button type="submit" className="btn btn-primary btn-block" disabled={authLoading}>
+                {authLoading ? "جاري الدخول" : "دخول"}
+              </button>
+            </form>
           )}
 
-          {authView === "register" && (
+          {authView === "join" && (
             <form onSubmit={handleRegister} className="form">
+              <p className="auth-note">اطلب رمز المؤسسة من مديرها، وسيوافق على طلبك.</p>
+              <label className="field">
+                <span>رمز المؤسسة</span>
+                <input
+                  type="text"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  maxLength={12}
+                  required
+                />
+              </label>
               <label className="field">
                 <span>اسم المستخدم</span>
                 <input
@@ -393,9 +441,90 @@ export default function App() {
                 />
                 <small>6 أحرف على الأقل.</small>
               </label>
+              <label className="field">
+                <span>تأكيد كلمة المرور</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </label>
               {authError && <p className="field-error">{authError}</p>}
               <button type="submit" className="btn btn-primary btn-block" disabled={authLoading}>
-                {authLoading ? "جاري الإرسال" : "إرسال طلب العضوية"}
+                {authLoading ? "جاري الإرسال" : "إرسال طلب الانضمام"}
+              </button>
+            </form>
+          )}
+
+          {authView === "create" && (
+            <form onSubmit={handleCreateOrg} className="form">
+              <p className="auth-note">أنشئ مؤسستك وتصبح مديرها الرئيسي، وتضيف أعضاءك برمز الانضمام.</p>
+              <label className="field">
+                <span>اسم المؤسسة</span>
+                <input
+                  type="text"
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="مثال: مؤسسة النور"
+                  required
+                  minLength={2}
+                  maxLength={80}
+                />
+              </label>
+              <label className="field">
+                <span>اسم المدير</span>
+                <input
+                  type="text"
+                  autoComplete="name"
+                  value={managerName}
+                  onChange={(e) => setManagerName(e.target.value)}
+                  placeholder="الاسم الكامل"
+                  required
+                  minLength={2}
+                  maxLength={80}
+                />
+              </label>
+              <label className="field">
+                <span>اسم المستخدم</span>
+                <input
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="اسم الدخول"
+                  required
+                  minLength={3}
+                />
+                <small>أحرف إنجليزية صغيرة وأرقام، من 3 أحرف.</small>
+              </label>
+              <label className="field">
+                <span>كلمة المرور</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+                <small>6 أحرف على الأقل.</small>
+              </label>
+              <label className="field">
+                <span>تأكيد كلمة المرور</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </label>
+              {authError && <p className="field-error">{authError}</p>}
+              <button type="submit" className="btn btn-primary btn-block" disabled={authLoading}>
+                {authLoading ? "جاري الإنشاء" : "إنشاء المؤسسة"}
               </button>
             </form>
           )}
@@ -474,12 +603,12 @@ export default function App() {
 
       <main>
         {tab === "tasks" && (
-          <Tasks session={session} orgId={ORG_ID} isManager={isManager} />
+          <Tasks session={session} orgId={orgId} isManager={isManager} />
         )}
         {tab === "meetings" && (
           <Meetings
             session={session}
-            orgId={ORG_ID}
+            orgId={orgId}
             isManager={isManager}
             intent={intent}
             onIntentDone={() => {
@@ -532,7 +661,7 @@ export default function App() {
         )}
 
         {tab === "account" && (
-          <Settings session={session} membership={membership} orgId={ORG_ID} onLogout={handleLogout} />
+          <Settings session={session} membership={membership} orgId={orgId} onLogout={handleLogout} />
         )}
       </main>
 
