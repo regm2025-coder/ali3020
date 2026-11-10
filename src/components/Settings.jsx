@@ -39,14 +39,14 @@ async function refreshApp() {
   }
 }
 
-export default function Settings({ session, membership, orgId, onLogout }) {
+export default function Settings({ session, membership, orgId, org, onOrgChange, onLogout }) {
   const [updating, setUpdating] = useState(false);
   const [installReady, setInstallReady] = useState(Boolean(window.__miadInstallPrompt));
   const [installed, setInstalled] = useState(isStandalone());
 
   const isManager = membership.role === "manager";
-  const [orgName, setOrgName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
+  const orgName = org?.name || "";
+  const joinCode = org?.join_code || "";
   const [copied, setCopied] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [showName, setShowName] = useState(false);
@@ -54,18 +54,6 @@ export default function Settings({ session, membership, orgId, onLogout }) {
   const [log, setLog] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    supabase
-      .from("organizations")
-      .select("name, join_code")
-      .eq("id", orgId)
-      .maybeSingle()
-      .then(({ data }) => {
-        setOrgName(data?.name || "");
-        setJoinCode(data?.join_code || "");
-      });
-  }, [orgId]);
 
   async function saveName(event) {
     event.preventDefault();
@@ -83,7 +71,7 @@ export default function Settings({ session, membership, orgId, onLogout }) {
       setError("تعذر حفظ الاسم. حاول مرة أخرى.");
       return;
     }
-    setOrgName(data[0].name);
+    onOrgChange({ ...org, name: data[0].name });
     setShowName(false);
   }
 
