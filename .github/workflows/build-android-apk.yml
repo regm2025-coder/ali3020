@@ -1,4 +1,5 @@
 name: Build Miad Android APK
+# Rebuild after the Capacitor WebView asset-path and service-worker fixes.
 
 on:
   workflow_dispatch:
