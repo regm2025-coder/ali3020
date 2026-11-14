@@ -5,6 +5,10 @@ const config: CapacitorConfig = {
   appName: "مِيعاد",
   webDir: "dist",
   bundledWebRuntime: false,
+  server: {
+    // الأصل الذي تُخدَم منه ملفات التطبيق داخل WebView: https://localhost
+    androidScheme: "https",
+  },
   android: {
     backgroundColor: "#ffffff",
   },
