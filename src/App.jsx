@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { ListChecks, CalendarDays, Users, User, Clock, X } from "lucide-react";
-import { supabase, isSupabaseConfigured } from "./lib/supabase";
+import { supabase, isSupabaseConfigured, supabaseConfigProblem } from "./lib/supabase";
 import { disablePush, syncPush } from "./lib/push";
 import Tasks from "./components/Tasks";
 import Meetings from "./components/Meetings";
@@ -337,7 +337,8 @@ export default function App() {
   if (!isSupabaseConfigured) {
     return (
       <div className="state-screen">
-        <p>إعدادات Supabase غير مكتملة. تحقق من ملف .env</p>
+        <p>إعدادات الاتصال بالخادم غير صحيحة.</p>
+        <p>{supabaseConfigProblem || "تحقق من أسرار البناء (VITE_SUPABASE_URL و VITE_SUPABASE_PUBLISHABLE_KEY)."}</p>
       </div>
     );
   }

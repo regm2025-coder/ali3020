@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Capacitor } from "@capacitor/core";
 import App from "./App.jsx";
+import { ErrorBoundary, BootDone } from "./components/ErrorBoundary";
 import "./style.css";
 
 // Web Push service workers are for the browser/PWA build.
@@ -28,6 +29,9 @@ if (!Capacitor.isNativePlatform()) {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <BootDone />
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
