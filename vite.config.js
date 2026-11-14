@@ -6,4 +6,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   base: "./",
   plugins: [react()],
+  build: {
+    // يوافق متصفحات WebView الأقدم قليلاً على أجهزة أندرويد
+    target: "es2020",
+  },
 });
