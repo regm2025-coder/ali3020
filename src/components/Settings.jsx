@@ -271,6 +271,12 @@ export default function Settings({ session, membership, orgId, org, onOrgChange,
       </button>
       {deleteError && !confirmDelete && <p className="field-error">{deleteError}</p>}
 
+      <p className="legal-links">
+        <a href="./privacy.html" target="_blank" rel="noopener">سياسة الخصوصية</a>
+        {" · "}
+        <a href="./delete-account.html" target="_blank" rel="noopener">حذف الحساب</a>
+      </p>
+
       {confirmDelete && (
         <ConfirmDialog
           title="حذف حسابك نهائياً؟"
