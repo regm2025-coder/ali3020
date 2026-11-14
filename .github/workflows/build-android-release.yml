@@ -1,0 +1,97 @@
+name: Build Miad Android Release (AAB)
+# يبني ملف AAB موقّعاً لرفعه إلى Google Play. يعمل يدوياً فقط.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Check signing secrets exist
+        env:
+          B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for n in B64 SP KA KP; do
+            if [ -z "${!n}" ]; then echo "Missing GitHub Actions secret for $n (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD)"; exit 1; fi
+          done
+          echo "Signing secrets present"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web app
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          export VITE_SUPABASE_URL=$(printf '%s' "$VITE_SUPABASE_URL" | LC_ALL=C tr -cd '\041-\176' | tr -d '"'"'"'')
+          export VITE_SUPABASE_PUBLISHABLE_KEY=$(printf '%s' "$VITE_SUPABASE_PUBLISHABLE_KEY" | LC_ALL=C tr -cd '\041-\176' | tr -d '"'"'"'')
+          echo "$VITE_SUPABASE_URL" | grep -Eq '^https://[A-Za-z0-9.-]+\.supabase\.co/?$' || { echo "VITE_SUPABASE_URL must look like https://xxxx.supabase.co"; exit 1; }
+          test ${#VITE_SUPABASE_PUBLISHABLE_KEY} -gt 20 || { echo "VITE_SUPABASE_PUBLISHABLE_KEY looks too short"; exit 1; }
+          npm run build
+          test -s dist/index.html
+          ls dist/assets | grep -q '\.js$'
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: Sync web app into Android
+        run: npx cap sync android
+
+      - name: Prepare signing
+        env:
+          B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$B64" | tr -d '[:space:]' | base64 -d > android/app/miad-upload.jks
+          test -s android/app/miad-upload.jks
+
+      - name: Configure release signing and version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python3 scripts/patch-android-release.py
+
+      - name: Build signed release bundle
+        working-directory: android
+        env:
+          MIAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MIAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MIAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease
+
+      - name: Verify bundle signature
+        run: |
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB" || { echo "AAB not found"; exit 1; }
+          jarsigner -verify "$AAB" | tail -3
+          keytool -printcert -jarfile "$AAB" | grep -E "Owner|SHA256"
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: miad-android-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
