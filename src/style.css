@@ -1389,3 +1389,6 @@ p {
   font-weight: 600;
   color: var(--gold-ink);
 }
+
+.legal-links { text-align: center; font-size: 13px; color: var(--ink-3); margin: 14px 0 4px; }
+.legal-links a { color: var(--ink-2); }
