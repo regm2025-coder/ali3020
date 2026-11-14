@@ -1,10 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 
-// القيمتان عامتان بطبيعتهما (رابط المشروع والمفتاح القابل للنشر يصلان لكل متصفح).
-// نستخدمهما كاحتياط حتى لا يتعطل التطبيق كله إذا كانت أسرار البناء ناقصة أو مكتوبة بشكل خاطئ.
-const FALLBACK_URL = "https://utugolyziunrvkmmopal.supabase.co";
-const FALLBACK_KEY = "sb_publishable_-_8NW4tATpHzvvrTyvhwog_yb0Mogld";
-
 function cleanEnv(value) {
   // تنظيف المسافات والأسطر الجديدة والاقتباسات التي تُلصق أحياناً مع الأسرار
   return String(value ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
@@ -22,35 +17,46 @@ function validUrl(value) {
 const envUrl = cleanEnv(import.meta.env.VITE_SUPABASE_URL);
 const envKey = cleanEnv(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 
-const useEnv = validUrl(envUrl) && envKey.length > 20;
-const supabaseUrl = useEnv ? envUrl : FALLBACK_URL;
-const supabaseKey = useEnv ? envKey : FALLBACK_KEY;
+// لا توجد قاعدة بيانات احتياطية: إذا كانت الإعدادات خاطئة نعرض رسالة واضحة ولا نتصل بأي خادم.
+let configProblem = null;
+if (!envUrl) {
+  configProblem = "السر VITE_SUPABASE_URL فارغ أو غير موجود.";
+} else if (!validUrl(envUrl)) {
+  configProblem = "السر VITE_SUPABASE_URL ليس رابطاً صحيحاً (المطلوب: https://xxxx.supabase.co).";
+} else if (envKey.length <= 20) {
+  configProblem = "السر VITE_SUPABASE_PUBLISHABLE_KEY فارغ أو غير مكتمل.";
+}
 
 let client = null;
 let initError = null;
-try {
-  client = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
-} catch (err) {
-  // لا نرمي الخطأ عند تحميل الملف: يعرض التطبيق رسالة واضحة بدل شاشة بيضاء
-  initError = err;
+if (!configProblem) {
+  try {
+    client = createClient(envUrl, envKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+  } catch (err) {
+    // لا نرمي الخطأ عند تحميل الملف: يعرض التطبيق رسالة واضحة بدل شاشة بيضاء
+    initError = err;
+    configProblem = "تعذّر تهيئة الاتصال: " + (err && err.message ? err.message : String(err));
+  }
 }
 
 export const supabase = client;
 export const isSupabaseConfigured = Boolean(client);
 export const supabaseInitError = initError;
+export const supabaseConfigProblem = configProblem;
 
 // معلومات تشخيصية تظهر في شاشة الخطأ (بلا أي مفاتيح)
 try {
   window.__miadEnv = {
     configured: isSupabaseConfigured,
-    source: useEnv ? "أسرار البناء" : "القيم الاحتياطية",
-    host: new URL(supabaseUrl).host,
+    source: "أسرار البناء",
+    host: validUrl(envUrl) ? new URL(envUrl).host : "-",
+    problem: configProblem,
   };
 } catch {
   // لا شيء
