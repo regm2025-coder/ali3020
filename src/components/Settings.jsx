@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Download, Smartphone, Check, LogOut, Building2, History, KeyRound, Copy } from "lucide-react";
+import { RefreshCw, Download, Smartphone, Check, LogOut, Building2, History, KeyRound, Copy, Trash2 } from "lucide-react";
 import NotificationsButton from "./NotificationsButton";
-import { Sheet } from "./ui";
+import { Sheet, ConfirmDialog } from "./ui";
 import { supabase } from "../lib/supabase";
 import { formatDateTime } from "../lib/format";
 
@@ -54,6 +54,34 @@ export default function Settings({ session, membership, orgId, org, onOrgChange,
   const [log, setLog] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function deleteAccount() {
+    setDeleting(true);
+    setDeleteError("");
+    const { data, error: err } = await supabase.functions.invoke("delete-account", {
+      body: { confirm: true },
+    });
+    if (err || !data?.success) {
+      let message = data?.error || "";
+      try {
+        if (!message && err?.context?.json) message = (await err.context.json())?.error || "";
+      } catch {
+        // لا شيء
+      }
+      setDeleting(false);
+      setDeleteError(message || "تعذر حذف الحساب. حاول مرة أخرى.");
+      return;
+    }
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // الحساب حُذف أصلاً
+    }
+    window.location.reload();
+  }
 
   async function saveName(event) {
     event.preventDefault();
@@ -236,6 +264,32 @@ export default function Settings({ session, membership, orgId, org, onOrgChange,
         <LogOut size={18} />
         تسجيل الخروج
       </button>
+
+      <button className="btn btn-quiet btn-block" onClick={() => { setDeleteError(""); setConfirmDelete(true); }}>
+        <Trash2 size={18} />
+        حذف حسابي
+      </button>
+      {deleteError && !confirmDelete && <p className="field-error">{deleteError}</p>}
+
+      <p className="legal-links">
+        <a href="./privacy.html" target="_blank" rel="noopener">سياسة الخصوصية</a>
+        {" · "}
+        <a href="./delete-account.html" target="_blank" rel="noopener">حذف الحساب</a>
+      </p>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="حذف حسابك نهائياً؟"
+          message={
+            deleteError ||
+            "سيُحذف حسابك واشتراكات الإشعارات والمهام الموجّهة إليك، ولا يمكن التراجع. الاجتماعات والمهام التي أنشأتها تبقى للمؤسسة. وإن كنت العضو الوحيد في مؤسسة فستُحذف معها."
+          }
+          confirmLabel="حذف حسابي"
+          busy={deleting}
+          onConfirm={deleteAccount}
+          onCancel={() => !deleting && setConfirmDelete(false)}
+        />
+      )}
 
       {showName && (
         <Sheet title="اسم المؤسسة" onClose={() => setShowName(false)}>
