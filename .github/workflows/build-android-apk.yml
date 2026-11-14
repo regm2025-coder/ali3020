@@ -39,13 +39,31 @@ jobs:
         run: |
           test -n "$VITE_SUPABASE_URL" || (echo "Missing GitHub Actions secret: VITE_SUPABASE_URL" && exit 1)
           test -n "$VITE_SUPABASE_PUBLISHABLE_KEY" || (echo "Missing GitHub Actions secret: VITE_SUPABASE_PUBLISHABLE_KEY" && exit 1)
+          # لا نطبع الأسرار؛ نتحقق فقط من شكل الرابط (سبب شائع للشاشة البيضاء)
+          CLEAN=$(printf '%s' "$VITE_SUPABASE_URL" | tr -d '[:space:]"'"'"'')
+          echo "$CLEAN" | grep -Eq '^https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}/?$' || { echo "VITE_SUPABASE_URL has an unexpected format (expected https://xxxx.supabase.co, no spaces or quotes)"; exit 1; }
           npm run build
+
+      - name: Verify web build output
+        run: |
+          test -s dist/index.html || { echo "dist/index.html is missing or empty"; exit 1; }
+          grep -q 'assets/' dist/index.html || { echo "dist/index.html does not reference assets/"; exit 1; }
+          ls dist/assets | grep -q '\.js$' || { echo "No JS bundle in dist/assets"; exit 1; }
+          if grep -Eq '(src|href)="/assets/' dist/index.html; then echo "Absolute /assets paths found; Capacitor needs relative paths"; exit 1; fi
+          echo "dist OK:"; ls -la dist dist/assets
 
       - name: Add Android platform
         run: npx cap add android
 
       - name: Sync web app into Android
         run: npx cap sync android
+
+      - name: Verify assets inside Android project
+        run: |
+          test -s android/app/src/main/assets/public/index.html || { echo "index.html missing from Android assets"; exit 1; }
+          ls android/app/src/main/assets/public/assets | grep -q '\.js$' || { echo "JS bundle missing from Android assets"; exit 1; }
+          cat android/app/src/main/assets/capacitor.config.json
+          echo "Android assets OK"
 
       - name: Build debug APK
         working-directory: android
