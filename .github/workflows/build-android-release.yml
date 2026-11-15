@@ -59,6 +59,9 @@ jobs:
       - name: Sync web app into Android
         run: npx cap sync android
 
+      - name: Prepare Firebase push
+        run: python3 scripts/prepare-android-push.py
+
       - name: Prepare signing
         env:
           B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

@@ -64,6 +64,9 @@ jobs:
       - name: Sync web app into Android
         run: npx cap sync android
 
+      - name: Prepare Firebase push
+        run: python3 scripts/prepare-android-push.py
+
       - name: Verify assets inside Android project
         run: |
           test -s android/app/src/main/assets/public/index.html || { echo "index.html missing from Android assets"; exit 1; }
