@@ -4,7 +4,7 @@ import { getPushState, enablePush, disablePush, setOptOut } from "../lib/push";
 
 const STATE_TEXT = {
   unsupported: "غير مدعومة في هذا المتصفح. على الآيفون ثبّت التطبيق أولاً.",
-  denied: "محجوبة. فعّلها من إعدادات المتصفح لهذا الموقع.",
+  denied: "محجوبة. فعّلها من إعدادات الجهاز أو المتصفح لهذا التطبيق.",
   off: "فعّلها لتصلك تذكيرات المهام والاجتماعات.",
   subscribed: "مفعّلة على هذا الجهاز.",
 };
