@@ -1,5 +1,5 @@
-name: Build Miad Android Release (AAB)
-# يبني ملف AAB موقّعاً لرفعه إلى Google Play. يعمل يدوياً فقط.
+name: Build Miad Android Release (AAB + APK)
+# يبني ملف APK موقّعاً (للمتاجر البديلة والتوزيع المباشر) وملف AAB. يعمل يدوياً فقط.
 
 on:
   workflow_dispatch:
@@ -79,14 +79,25 @@ jobs:
           MIAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease
+          ./gradlew assembleRelease bundleRelease
 
-      - name: Verify bundle signature
+      - name: Verify signatures
         run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
           AAB=android/app/build/outputs/bundle/release/app-release.aab
+          test -s "$APK" || { echo "Signed APK not found (is it app-release-unsigned.apk?)"; ls -R android/app/build/outputs; exit 1; }
           test -s "$AAB" || { echo "AAB not found"; exit 1; }
-          jarsigner -verify "$AAB" | tail -3
-          keytool -printcert -jarfile "$AAB" | grep -E "Owner|SHA256"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | grep -E "Verifies|Verified using|SHA-256"
+          jarsigner -verify "$AAB" | tail -2
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: miad-android-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
