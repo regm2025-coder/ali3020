@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "534894752000",
+    "project_id": "miad-dcb35",
+    "storage_bucket": "miad-dcb35.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:534894752000:android:931d1d467842a81a5183e5",
+        "android_client_info": {
+          "package_name": "com.miad.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAR9f3Cq8OKZSOCWJa6VH4m1kIW5f7YbxE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
