@@ -1,9 +1,52 @@
+import { Capacitor } from "@capacitor/core";
 import { supabase } from "./supabase";
 
 // اشتراك المتصفح في إشعارات الويب وحفظه في جدول push_subscriptions.
 // المفتاح العام يُجلب من دالة get-vapid-public-key؛ المفتاح الخاص يبقى في الخادم.
 
+// ---- تطبيق الأندرويد (Capacitor): إشعارات FCM ----
+const isNative = () => Capacitor.isNativePlatform();
+const TOKEN_KEY = "miad-fcm-token";
+let nativeReady = false;
+
+async function nativePlugin() {
+  const mod = await import("@capacitor/push-notifications");
+  return mod.PushNotifications;
+}
+
+async function setupNative(PN) {
+  if (nativeReady) return;
+  nativeReady = true;
+
+  await PN.addListener("registration", async (token) => {
+    try {
+      localStorage.setItem(TOKEN_KEY, token.value);
+    } catch {
+      // التخزين غير متاح: لا مشكلة
+    }
+    await supabase.rpc("register_device_token", {
+      p_token: token.value,
+      p_platform: "android",
+    });
+  });
+  await PN.addListener("registrationError", () => {});
+  // الضغط على الإشعار يفتح الصفحة المطلوبة (اجتماع أو مهام)
+  await PN.addListener("pushNotificationActionPerformed", (action) => {
+    const url = action?.notification?.data?.url;
+    if (typeof url === "string" && url.startsWith("/")) window.location.assign(url);
+  });
+  // قناة إشعارات عالية الأهمية (مطلوبة في أندرويد 8 وما بعده)
+  await PN.createChannel({
+    id: "miad_reminders",
+    name: "التذكيرات",
+    description: "تذكيرات الاجتماعات والمهام",
+    importance: 5,
+    visibility: 1,
+  }).catch(() => {});
+}
+
 export function pushSupported() {
+  if (isNative()) return true;
   return (
     typeof navigator !== "undefined" &&
     "serviceWorker" in navigator &&
@@ -26,6 +69,12 @@ async function registerWorker() {
 
 // "unsupported" | "denied" | "subscribed" | "off"
 export async function getPushState() {
+  if (isNative()) {
+    const PN = await nativePlugin();
+    const perm = await PN.checkPermissions();
+    if (perm.receive === "denied") return "denied";
+    return perm.receive === "granted" && !isOptedOut() ? "subscribed" : "off";
+  }
   if (!pushSupported()) return "unsupported";
   if (Notification.permission === "denied") return "denied";
 
@@ -35,6 +84,18 @@ export async function getPushState() {
 }
 
 export async function enablePush(userId) {
+  if (isNative()) {
+    const PN = await nativePlugin();
+    let perm = await PN.checkPermissions();
+    if (perm.receive !== "granted") perm = await PN.requestPermissions();
+    if (perm.receive !== "granted") {
+      throw new Error("لم يتم السماح بالإشعارات. فعّلها من إعدادات الجهاز.");
+    }
+    setOptOut(false);
+    await setupNative(PN);
+    await PN.register();
+    return;
+  }
   if (!pushSupported()) throw new Error("المتصفح لا يدعم الإشعارات.");
 
   setOptOut(false);
@@ -115,6 +176,15 @@ async function saveSubscription(userId, sub) {
 // يُستدعى عند فتح التطبيق: إن كان الإذن ممنوحاً نتأكد أن الجهاز مشترك ومحفوظ في القاعدة،
 // ونعيد الاشتراك بصمت إذا ضاع (انتهاء الاشتراك، حذف بيانات الموقع، تحديث المتصفح...)
 export async function syncPush(userId) {
+  if (isNative()) {
+    if (isOptedOut()) return;
+    const PN = await nativePlugin();
+    const perm = await PN.checkPermissions();
+    if (perm.receive !== "granted") return;
+    await setupNative(PN);
+    await PN.register();
+    return;
+  }
   if (!pushSupported()) return;
   if (Notification.permission !== "granted" || isOptedOut()) return;
 
@@ -133,6 +203,17 @@ export async function syncPush(userId) {
 }
 
 export async function disablePush() {
+  if (isNative()) {
+    let token = "";
+    try {
+      token = localStorage.getItem(TOKEN_KEY) || "";
+    } catch {
+      // لا شيء
+    }
+    // يجب الحذف قبل تسجيل الخروج (RLS تسمح للمستخدم بحذف رمزه فقط)
+    if (token) await supabase.from("device_tokens").delete().eq("token", token);
+    return;
+  }
   if (!pushSupported()) return;
 
   const reg = await navigator.serviceWorker.getRegistration();
